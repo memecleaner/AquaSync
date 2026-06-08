@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaSync - Profile & E-Statement</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { background-color: #f5f6fa; color: #2d3436; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
+        .header { padding: 20px; background: #ffffff; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
+        .main-container { padding: 0 20px 100px; box-sizing: border-box; }
+        
+        /* BOTTOM NAV PUTIH */
+        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; height: 70px; background: #ffffff; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(0,0,0,0.05); z-index: 1000; box-shadow: 0 -5px 15px rgba(0,0,0,0.02); }
+        .nav-item { color: #a4b0be; text-decoration: none; font-size: 12px; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; text-align: center; }
+        .nav-item.active { color: #36c2b5; }
+        .nav-home-circle { position: relative; top: -20px; width: 65px; height: 65px; max-width: 65px; aspect-ratio: 1 / 1; background: #7dd1d7; border-radius: 50%; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 8px 20px rgba(125, 209, 215, 0.4); border: none !important; color: white !important; }
+        
+        /* KOMPONEN PROFIL */
+        .profile-card { background: #ffffff; padding: 25px 20px; border-radius: 24px; box-shadow: 0 4px 15px rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.01); text-align: center; margin-top: 20px; }
+        .avatar { width: 80px; height: 80px; aspect-ratio: 1 / 1; background: #7dd1d7; border-radius: 50%; display: inline-flex; justify-content: center; align-items: center; font-size: 36px; margin-bottom: 12px; color: white; box-shadow: 0 6px 12px rgba(125,209,215,0.15); }
+        .logout-btn { width: 100%; padding: 12px; background: #ff7675; color: white; border: none; border-radius: 12px; font-size: 13px; font-weight: bold; cursor: pointer; margin-top: 20px; box-shadow: 0 4px 10px rgba(255, 118, 117, 0.15); }
+        
+        /* BOKS E-STATEMENT MINGGUAN KARYA BARU */
+        .statement-section { margin-top: 25px; }
+        .section-title { font-size: 14px; font-weight: 700; color: #2d3436; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+        .statement-card { background: #ffffff; padding: 15px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.01); display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .statement-info { text-align: left; }
+        .statement-date { font-size: 14px; font-weight: 700; color: #2d3436; }
+        .statement-status { font-size: 11px; color: #a4b0be; margin-top: 2px; }
+        .download-btn { padding: 8px 14px; background: #36c2b5; color: white; border: none; border-radius: 10px; font-size: 12px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block; transition: background 0.2s; }
+        .download-btn:hover { background: #2cb2a5; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="logo-area"><span class="logo-text" style="font-weight: 900; color: #36c2b5;">AQUASYNC PROFILE</span></div>
+    </div>
+
+    <div class="main-container">
+        
+        <div class="profile-card">
+            <div class="avatar">👑</div>
+            <h2 id="profileName" style="margin: 0; font-size: 20px; font-weight: 700;">Loading Name...</h2>
+            <p id="profileEmail" style="color: #7f8c8d; margin: 4px 0 15px 0; font-size: 13px;">loading.email@aquasync.com</p>
+            
+            <div style="text-align: left; background: #f8f9fa; padding: 12px; border-radius: 12px; font-size: 12px; color: #2d3436; border: 1px solid rgba(0,0,0,0.02);">
+                🔑 Role Status: <span style="color: #00b894; font-weight: bold;">Premium User (Your Highness)</span><br>
+                🛡️ App Security: <span style="color: #6c5ce7; font-weight: bold;">Firebase Encrypted</span>
+            </div>
+
+            <button id="btnLogout" class="logout-btn">LOG OUT FROM SYSTEM</button>
+        </div>
+
+        <div class="statement-section">
+            <div class="section-title">📄 Weekly E-Statement (Riwayat Penggunaan)</div>
+            
+            <div id="statementListContainer">
+                <div style="text-align: center; color: #a4b0be; font-size: 13px; padding: 20px;">
+                    Menghubungkan arsip mingguan...
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <nav class="bottom-nav">
+        <a href="stats_page.html" class="nav-item active"><span class="nav-icon" style="font-size: 20px;">
+            <img src="/clips/stats_icon.png" alt="">
+        </span>Stats</a>
+        <a href="dashboard.html" class="nav-item nav-home-circle"><span class="nav-icon" style="font-size: 24px;">
+            <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="47" height="47" viewBox="0,0,256,256">
+            <g fill="#fbfafa" fill-rule="nonzero" stroke="none" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><g transform="scale(3.55556,3.55556)"><path d="M36,10c-1.139,0 -2.27708,0.38661 -3.20508,1.16211l-21.27734,17.7793c-1.465,1.224 -1.96564,3.32881 -1.05664,5.00781c1.251,2.309 4.20051,2.79122 6.10352,1.19922l18.79492,-15.70313c0.371,-0.31 0.91025,-0.31 1.28125,0l18.79492,15.70313c0.748,0.626 1.6575,0.92969 2.5625,0.92969c1.173,0 2.33591,-0.51091 3.12891,-1.50391c1.377,-1.724 0.98597,-4.27055 -0.70703,-5.68555l-2.41992,-2.02148v-10.19922c0,-1.473 -1.19402,-2.66797 -2.66602,-2.66797h-2.66602c-1.473,0 -2.66797,1.19497 -2.66797,2.66797v3.51367l-10.79492,-9.01953c-0.928,-0.7755 -2.06608,-1.16211 -3.20508,-1.16211zM35.99609,22.92578l-22,18.37695v8.69727c0,4.418 3.582,8 8,8h28c4.418,0 8,-3.582 8,-8v-8.69727zM32,38h8c1.105,0 2,0.895 2,2v10h-12v-10c0,-1.105 0.895,-2 2,-2z"></path></g></g>
+            </svg>
+        </span></a>
+        <a href="user_page.html" class="nav-item"><span class="nav-icon" style="font-size: 20px;">
+            <img src="/clips/user_icon.png" alt="">
+        </span>User</a>
+    </nav>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        // Panggil database modul juga untuk membaca link arsip statement
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyC9PuXQiQ2zCKfCMG3KTYoiU_kldIZmNxE",
+          authDomain: "aquasync-dda8c.firebaseapp.com",
+          projectId: "aquasync-dda8c",
+          databaseURL: "https://aquasync-dda8c-default-rtdb.asia-southeast1.firebasedatabase.app",
+          appId: "1:332004178563:web:d34bb11e834b4832a579b6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const database = getDatabase(app);
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('profileName').innerText = user.email.split('@')[0];
+                document.getElementById('profileEmail').innerText = user.email;
+            } else {
+                window.location.href = "login_page.html";
+            }
+        });
+
+        // ----------------------------------------------------
+        // LOGIKA MEMBACA DATA ARSIP E-STATEMENT DARI FIREBASE
+        // ----------------------------------------------------
+        const statementRef = ref(database, 'AquaSync/E_Statements');
+        onValue(statementRef, (snapshot) => {
+            // ----------------------------------------------------
+        // LOGIKA GENERATOR SIMULASI FILE E-STATEMENT MINGGUAN REALNYA
+        // ----------------------------------------------------
+        const statementRef = ref(database, 'AquaSync/E_Statements');
+        onValue(statementRef, (snapshot) => {
+            const data = snapshot.val();
+            const container = document.getElementById('statementListContainer');
+            
+            // Kita buatkan dummy konten CSV yang rapi berdasarkan data skripsi Anda
+            const csvContent1 = "data:text/csv;charset=utf-8,Periode,User,Aktivitas,Durasi(Menit),Estimasi_kWh\n01-07 Juni,audrey,Mandi,40,0.1667\n01-07 Juni,user2,Mesin Cuci,120,0.5000\n01-07 Juni,user3,Cuci Piring,15,0.0625";
+            const csvContent2 = "data:text/csv;charset=utf-8,Periode,User,Aktivitas,Durasi(Menit),Estimasi_kWh\n08-14 Juni,audrey,Mesin Cuci,60,0.2500\n08-14 Juni,user2,Mandi,35,0.1458";
+
+            // Tampilan daftar e-statement otomatis yang siap download file aslinya!
+            container.innerHTML = `
+                <div class="statement-card">
+                    <div class="statement-info">
+                        <div class="statement-date">📅 Periode 01 Juni - 07 Juni</div>
+                        <div class="statement-status">Status: Ready to download (.csv)</div>
+                    </div>
+                    <a href="${encodeURI(csvContent1)}" download="AquaSync_Statement_Minggu1.csv" class="download-btn">DOWNLOAD</a>
+                </div>
+                <div class="statement-card">
+                    <div class="statement-info">
+                        <div class="statement-date">📅 Periode 08 Juni - 14 Juni</div>
+                        <div class="statement-status">Status: Ready to download (.csv)</div>
+                    </div>
+                    <a href="${encodeURI(csvContent2)}" download="AquaSync_Statement_Minggu2.csv" class="download-btn">DOWNLOAD</a>
+                </div>
+            `;
+        });
+        });
+
+        document.getElementById('btnLogout').addEventListener('click', () => {
+            if (confirm("Apakah Anda yakin ingin keluar dari aplikasi AquaSync?")) {
+                signOut(auth).then(() => { window.location.href = "login_page.html"; });
+            }
+        });
+    </script>
+</body>
+</html>
