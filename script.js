@@ -35,7 +35,7 @@ onAuthStateChanged(auth, (user) => {
         const nameElem = document.getElementById('dynamicUserName');
         if (nameElem) { nameElem.innerText = loggedInUserEmail; }
     } else {
-        window.location.href = "login_page.html";
+        window.location.href = "index.html";
     }
 });
 
