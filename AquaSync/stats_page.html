@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaSync - Statistics</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #f5f6fa; color: #2d3436; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
+        .header { position: fixed; top: 0; left: 0; width: 100%; height: 60px; background: #ffffff; box-shadow: 0 2px 10px rgba(0,0,0,0.02); z-index: 1001; display: flex; align-items: center; padding: 0 20px; box-sizing: border-box; }
+        .main-container { margin-top: 80px; padding: 0 20px 100px; box-sizing: border-box; }
+        .billing-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; }
+        .bill-card { background: #ffffff; padding: 15px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.01); text-align: left; }
+        .bill-label { font-size: 11px; color: #7f8c8d; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3px; }
+        .bill-value { font-size: 18px; font-weight: 800; margin-top: 5px; color: #2d3436; }
+        .alert-caption { background: #ffeaa7; border-left: 4px solid #fdcb6e; padding: 12px; border-radius: 8px; font-size: 11px; color: #d63031; font-weight: 600; line-height: 1.4; margin-bottom: 20px; }
+        .chart-card { background: #ffffff; padding: 20px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); margin-bottom: 20px; text-align: center; }
+        .chart-title { font-size: 13px; font-weight: 700; color: #2d3436; margin-bottom: 15px; text-align: left; display: flex; align-items: center; gap: 5px; }
+        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; height: 70px; background: #ffffff; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid rgba(0,0,0,0.05); z-index: 1000; box-shadow: 0 -5px 15px rgba(0,0,0,0.02); }
+        .nav-item { color: #a4b0be; text-decoration: none; font-size: 12px; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; text-align: center; }
+        .nav-item.active { color: #36c2b5; }
+        .nav-home-circle { position: relative; top: -20px; width: 65px; height: 65px; max-width: 65px; aspect-ratio: 1 / 1; background: #7dd1d7; border-radius: 50%; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 8px 20px rgba(125, 209, 215, 0.4); border: none !important; color: white !important; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <span class="logo-text" style="font-weight: 900; color: #36c2b5; font-size: 16px;">
+            <img src="/clips/stats_icon.png" width="20px" alt="AquaSync Logo"> AQUASYNC ANALYTICS</span>
+    </div>
+
+    <div class="main-container">
+        
+        <div class="alert-caption">
+            <img src="/clips/warning_icon.png" alt="">
+            PERINGATAN SIKLUS DATA: Seluruh hitungan tagihan aktual dan grafik menit di bawah ini dihitung per minggu (Senin 00:00 s/d Minggu 23:59 WIB). Sistem otomatis mengosongkan data kembali ke nol pada Senin dini hari.
+        </div>
+
+        <div class="billing-grid">
+            <div class="bill-card" style="border-top: 3px solid #36c2b5;">
+                <div class="bill-label">Actual Bill (Minggu Ini)</div>
+                <div id="statActualBill" class="bill-value">Rp 0</div>
+            </div>
+            <div class="bill-card" style="border-top: 3px solid #6c5ce7; background: #f9f8ff;">
+                <div class="bill-label">AI Predicted (Minggu Ini)</div>
+                <div id="statPredictedBill" class="bill-value" style="color: #6c5ce7;">Rp --</div>
+            </div>
+        </div>
+
+        <div id="statsResetWarning" style="display: none; background: #ff7675; color: white; padding: 10px; border-radius: 10px; font-size: 11px; font-weight: bold; margin-bottom: 20px; line-height: 1.4; box-shadow: 0 4px 10px rgba(255,118,117,0.2);">
+            ⚠️ PEMBERITAHUAN: Malam ini siklus data ditutup! Pastikan semua sesi penggunaan air sudah di-check-out.
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">
+                <img src="/clips/user_icon.png" width="16px"  alt="">
+                Kontribusi Durasi Air Per User (Menit)</div>
+            <canvas id="userMinutesChart" style="max-height: 220px;"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">
+                <img src="/clips/water_icon.png" alt="">
+                Alokasi Keperluan Air Pompa</div>
+            <canvas id="purposePieChart" style="max-height: 220px; margin: 0 auto;"></canvas>
+        </div>
+
+    </div>
+
+    <nav class="bottom-nav">
+        <a href="stats_page.html" class="nav-item active"><span class="nav-icon" style="font-size: 20px;">
+            <img src="/clips/stats_icon.png" alt="">
+        </span>Stats</a>
+        <a href="dashboard.html" class="nav-item nav-home-circle"><span class="nav-icon" style="font-size: 24px;">
+            <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="47" height="47" viewBox="0,0,256,256">
+            <g fill="#fbfafa" fill-rule="nonzero" stroke="none" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><g transform="scale(3.55556,3.55556)"><path d="M36,10c-1.139,0 -2.27708,0.38661 -3.20508,1.16211l-21.27734,17.7793c-1.465,1.224 -1.96564,3.32881 -1.05664,5.00781c1.251,2.309 4.20051,2.79122 6.10352,1.19922l18.79492,-15.70313c0.371,-0.31 0.91025,-0.31 1.28125,0l18.79492,15.70313c0.748,0.626 1.6575,0.92969 2.5625,0.92969c1.173,0 2.33591,-0.51091 3.12891,-1.50391c1.377,-1.724 0.98597,-4.27055 -0.70703,-5.68555l-2.41992,-2.02148v-10.19922c0,-1.473 -1.19402,-2.66797 -2.66602,-2.66797h-2.66602c-1.473,0 -2.66797,1.19497 -2.66797,2.66797v3.51367l-10.79492,-9.01953c-0.928,-0.7755 -2.06608,-1.16211 -3.20508,-1.16211zM35.99609,22.92578l-22,18.37695v8.69727c0,4.418 3.582,8 8,8h28c4.418,0 8,-3.582 8,-8v-8.69727zM32,38h8c1.105,0 2,0.895 2,2v10h-12v-10c0,-1.105 0.895,-2 2,-2z"></path></g></g>
+            </svg>
+        </span></a>
+        <a href="user_page.html" class="nav-item"><span class="nav-icon" style="font-size: 20px;">
+            <img src="/clips/user_icon.png" alt="">
+        </span>User</a>
+    </nav>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyC9PuXQiQ2zCKfCMG3KTYoiU_kldIZmNxE",
+          authDomain: "aquasync-dda8c.firebaseapp.com",
+          databaseURL: "https://aquasync-dda8c-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "aquasync-dda8c"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        const rupiah = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
+
+        let barChartInstance = null;
+        let pieChartInstance = null;
+
+        const syncRef = ref(database, 'AquaSync');
+        onValue(syncRef, (snapshot) => {
+            const root = snapshot.val();
+            if (!root) return;
+
+            // FIX 1: Panggil Monthly_Bill dari Firebase Anda agar angka Rp 3.000 nya muncul!
+            const actualBillVal = (root.Energy_Usage && root.Energy_Usage.Actual_Bill) || 0;
+            const predictedBillVal = (root.Prediction && root.Prediction.Monthly_Bill) || 0;
+
+            document.getElementById('statActualBill').innerText = rupiah.format(actualBillVal);
+            document.getElementById('statPredictedBill').innerText = rupiah.format(predictedBillVal);
+
+            const sekarang = new Date();
+            const hariIni = sekarang.getDay(); 
+            const jamIni = sekarang.getHours();
+            const warningBox = document.getElementById('statsResetWarning');
+            
+            if (warningBox) {
+                if (hariIni === 0 && jamIni >= 18) { warningBox.style.display = 'block'; }
+                else { warningBox.style.display = 'none'; }
+            }
+
+            // FIX 2: Amankan pembacaan database agar grafik toleran terhadap singkatan nama (Cuci, Mandi, Mesin)
+            const statsSummary = root.Stats_Summary || { Users: {}, Purposes: {} };
+            
+            const userLabels = Object.keys(statsSummary.Users || {});
+            const userData = Object.values(statsSummary.Users || {});
+            
+            // Map nama agar tampilan di grafik lingkaran rapi ber-ekstensi emoji
+            const purposeLabels = Object.keys(statsSummary.Purposes || {}).map(key => {
+                if(key.includes("Cuci")) return "Cuci Piring";
+                if(key.includes("Mandi")) return " Mandi";
+                if(key.includes("Mesin")) return " Mesin Cuci";
+                return "🌱 " + key;
+            });
+            const purposeData = Object.values(statsSummary.Purposes || {});
+
+            // DRAW GRAFIK BATANG USER
+            if (barChartInstance) { barChartInstance.destroy(); } 
+            const ctxBar = document.getElementById('userMinutesChart').getContext('2d');
+            barChartInstance = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: userLabels.length ? userLabels : ['Standby'],
+                    datasets: [{
+                        label: 'Durasi (Menit)',
+                        data: userData.length ? userData : [0],
+                        backgroundColor: '#36c2b5',
+                        borderRadius: 8
+                    }]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+
+            // DRAW GRAFIK LINGKARAN KATEGORI AKTIVITAS
+            if (pieChartInstance) { pieChartInstance.destroy(); }
+            const ctxPie = document.getElementById('purposePieChart').getContext('2d');
+            pieChartInstance = new Chart(ctxPie, {
+                type: 'pie',
+                data: {
+                    labels: purposeLabels.length ? purposeLabels : ['Standby'],
+                    datasets: [{
+                        data: purposeData.length ? purposeData : [100],
+                        backgroundColor: ['#fdcb6e', '#0984e3', '#00b894', '#6c5ce7', '#b2bec3']
+                    }]
+                },
+                options: { responsive: true }
+            });
+        });
+    </script>
+</body>
+</html>
