@@ -24,7 +24,8 @@ let loggedInUserEmail = "-";
 let currentActiveUsers = "-";
 let currentWaterPurposes = "-";
 let rawFirebaseSnapshot = {}; 
-let isWaitingVerifikasi = false; // Flag internal pembantu countdown
+let isWaitingVerifikasi = false; 
+let globalButtonCondition = false; // Mengamankan status tombol secara global
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -51,105 +52,110 @@ const rupiahFormatter = new Intl.NumberFormat('id-ID', {
     style: 'currency', currency: 'IDR', maximumFractionDigits: 0
 });
 
-// MEMANTAU NODES KONTROL (Button_condition) SEKALIGUS DATA REALTIME
+// =================================================================
+// 1. LISTENER KONTROL UTAMA (BERDIRI SENDIRI - ANTI INFINITE LOOP)
+// =================================================================
 onValue(controlRef, (controlSnapshot) => {
     const controlData = controlSnapshot.val();
-    const buttonCondition = controlData ? controlData.Button_condition : false;
+    globalButtonCondition = controlData ? controlData.Button_condition : false;
+});
 
-    onValue(realtimeRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            rawFirebaseSnapshot = data; 
-            document.getElementById('valWaterLevel').innerText = data.Water_Level + "%";
-            
-            const waterFillElem = document.getElementById('torenWaterFill');
-            if (waterFillElem) { waterFillElem.style.height = data.Water_Level + "%"; }
+// =================================================================
+// 2. LISTENER REALTIME STATUS (BERDIRI SENDIRI SEJAJAR)
+// =================================================================
+onValue(realtimeRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+        rawFirebaseSnapshot = data; 
+        document.getElementById('valWaterLevel').innerText = data.Water_Level + "%";
+        
+        const waterFillElem = document.getElementById('torenWaterFill');
+        if (waterFillElem) { waterFillElem.style.height = data.Water_Level + "%"; }
 
-            const vibrationElem = document.getElementById('valVibration');
-            if (vibrationElem) { vibrationElem.innerText = data.Vibration; }
+        const vibrationElem = document.getElementById('valVibration');
+        if (vibrationElem) { vibrationElem.innerText = data.Vibration; }
 
-            globalPumpTimeout = data.Pump_Timeout || 0;
-            currentActiveUsers = data.Active_User || "-";
-            currentWaterPurposes = data.Water_Purpose || "-";
-            currentPumpState = data.Pump_Button;
+        globalPumpTimeout = data.Pump_Timeout || 0;
+        currentActiveUsers = data.Active_User || "-";
+        currentWaterPurposes = data.Water_Purpose || "-";
+        currentPumpState = data.Pump_Button;
 
-            const bigStatus = document.getElementById('bigPumpStatus');
-            const bigDetail = document.getElementById('bigPumpDetail');
-            const pumpVisual = document.getElementById('pumpVisual');
-            const forceStopBtn = document.getElementById('forceStopBtn');
+        const bigStatus = document.getElementById('bigPumpStatus');
+        const bigDetail = document.getElementById('bigPumpDetail');
+        const pumpVisual = document.getElementById('pumpVisual');
+        const forceStopBtn = document.getElementById('forceStopBtn');
 
-            // --- LOGIKA VALIDASI HYBRID BERBASIS BUTTON_CONDITION & VIBRATION ---
-            if (buttonCondition === true) {
-                forceStopBtn.style.display = 'block'; 
+        // Gunakan variabel globalButtonCondition yang sudah diamankan
+        if (globalButtonCondition === true) {
+            forceStopBtn.style.display = 'block'; 
 
-                // Jika hardware melapor bergetar, dan kita belum memvalidasi sukses
-                if (data.Vibration === true && !isVibrationValidated) {
-                    isVibrationValidated = true;
-                    isWaitingVerifikasi = false;
-                    clearInterval(handshakeInterval); 
-                    
-                    // Sukses! Set Pump_Button ke 1 di Firebase agar semua user tahu pompa resmi AKTIF
-                    update(ref(database), { 'AquaSync/Realtime_Status/Pump_Button': 1 });
-                    updatePumpUISuccess();
-                    startActivityCountdown(); 
-                }
-
-                if (isVibrationValidated || data.Pump_Button === 1) {
-                    bigStatus.innerText = "POMPA AKTIF";
-                    bigStatus.style.color = "#36c2b5"; 
-                    suntikVisualDinamis(pumpVisual, URI_VISUAL_AKTIF, "⚡🌀");
-                    
-                    const usersArray = currentActiveUsers.split(' + ');
-                    const purposesArray = currentWaterPurposes.split(' + ');
-                    let htmlContent = "";
-
-                    usersArray.forEach((user, index) => {
-                        const purpose = purposesArray[index] || "Keperluan Umum";
-                        htmlContent += `
-                            <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); box-shadow: 0 2px 5px rgba(0,0,0,0.01);">
-                                <span style="font-weight: 700; color: #2d3436;">👤 ${user}</span>
-                                <span style="color: #36c2b5; font-weight: 600; font-size: 13px;">➔ ${purpose}</span>
-                            </div>
-                        `;
-                    });
-                    bigDetail.innerHTML = htmlContent;
-                } else {
-                    // Fase tunggu verifikasi getaran (sedang countdown 1 menit)
-                    bigStatus.innerText = "MEMVERIFIKASI...";
-                    bigStatus.style.color = "#fdcb6e"; 
-                    suntikVisualDinamis(pumpVisual, URI_VISUAL_VERIFIKASI, "⏳");
-                    bigDetail.innerHTML = `<div>Menunggu respons balik mekanis dari sensor getaran...</div>`;
-                    
-                    if (!isWaitingVerifikasi) {
-                        isWaitingVerifikasi = true;
-                        startHandshakeTimeout();
-                    }
-                }
-            } else {
-                // Jika Button_condition == false (Pompa Non-Aktif)
-                isVibrationValidated = false;
+            // Validasi Getaran Sukses
+            if (data.Vibration === true && !isVibrationValidated) {
+                isVibrationValidated = true;
                 isWaitingVerifikasi = false;
-                forceStopBtn.style.display = 'none'; 
-                clearInterval(handshakeInterval);
-                clearInterval(activityTimerInterval);
+                clearInterval(handshakeInterval); 
                 
-                bigStatus.innerText = "POMPA NON-AKTIF";
-                bigStatus.style.color = "#ff7675"; 
-                suntikVisualDinamis(pumpVisual, URI_VISUAL_STANDBY, "💤");
-                bigDetail.innerHTML = `<div>Sistem dalam kondisi standby aman</div>`;
-                
-                updatePumpUI(0);
+                // Amankan Update Data (Dipicu sekali saja karena ada pelindung isVibrationValidated)
+                update(ref(database), { 'AquaSync/Realtime_Status/Pump_Button': 1 });
+                updatePumpUISuccess();
+                startActivityCountdown(); 
             }
 
-            if (buttonCondition === true && (isVibrationValidated || data.Pump_Button === 1)) {
-                const btn = document.getElementById('pBtn');
-                btn.classList.add('on'); 
-                btn.innerText = 'JOIN'; 
+            if (isVibrationValidated || data.Pump_Button === 1) {
+                bigStatus.innerText = "POMPA AKTIF";
+                bigStatus.style.color = "#36c2b5"; 
+                suntikVisualDinamis(pumpVisual, URI_VISUAL_AKTIF, "⚡🌀");
+                
+                const usersArray = currentActiveUsers.split(' + ');
+                const purposesArray = currentWaterPurposes.split(' + ');
+                let htmlContent = "";
+
+                usersArray.forEach((user, index) => {
+                    const purpose = purposesArray[index] || "Keperluan Umum";
+                    htmlContent += `
+                        <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); box-shadow: 0 2px 5px rgba(0,0,0,0.01);">
+                            <span style="font-weight: 700; color: #2d3436;">👤 ${user}</span>
+                            <span style="color: #36c2b5; font-weight: 600; font-size: 13px;">➔ ${purpose}</span>
+                        </div>
+                    `;
+                });
+                bigDetail.innerHTML = htmlContent;
+            } else {
+                bigStatus.innerText = "MEMVERIFIKASI...";
+                bigStatus.style.color = "#fdcb6e"; 
+                suntikVisualDinamis(pumpVisual, URI_VISUAL_VERIFIKASI, "⏳");
+                bigDetail.innerHTML = `<div>Menunggu respons balik mekanis dari sensor getaran...</div>`;
+                
+                if (!isWaitingVerifikasi) {
+                    isWaitingVerifikasi = true;
+                    startHandshakeTimeout();
+                }
             }
+        } else {
+            // Kondisi OFF
+            isVibrationValidated = false;
+            isWaitingVerifikasi = false;
+            forceStopBtn.style.display = 'none'; 
+            clearInterval(handshakeInterval);
+            clearInterval(activityTimerInterval);
+            
+            bigStatus.innerText = "POMPA NON-AKTIF";
+            bigStatus.style.color = "#ff7675"; 
+            suntikVisualDinamis(pumpVisual, URI_VISUAL_STANDBY, "💤");
+            bigDetail.innerHTML = `<div>Sistem dalam kondisi standby aman</div>`;
+            
+            updatePumpUI(0);
         }
-    }, { onlyOnce: false });
-}, { onlyOnce: false });
 
+        if (globalButtonCondition === true && (isVibrationValidated || data.Pump_Button === 1)) {
+            const btn = document.getElementById('pBtn');
+            btn.classList.add('on'); 
+            btn.innerText = 'JOIN'; 
+        }
+    }
+});
+
+// 3. SINKRONISASI DATA KELISTRIKAN SENSOR PZEM
 onValue(energyRef, (snapshot) => {
     const data = snapshot.val();
     if (data) {
@@ -160,6 +166,7 @@ onValue(energyRef, (snapshot) => {
     }
 });
 
+// 4. REAL-TIME PREDIKSI
 onValue(predictionRef, (snapshot) => {
     const data = snapshot.val();
     if (data && data.Monthly_Bill) {
@@ -167,6 +174,9 @@ onValue(predictionRef, (snapshot) => {
     }
 });
 
+// =================================================================
+// LOGIKA TOMBOL & INTERFACES (AMBIL DARI STATE YANG BENAR)
+// =================================================================
 window.handlePumpClick = function() {
     if (currentPumpState === 1 && isVibrationValidated) {
         if (currentActiveUsers.includes(loggedInUserEmail)) {
@@ -203,11 +213,6 @@ window.checkoutUserSession = function() {
     const updates = {};
 
     if (userIndex !== -1) {
-        let myPurpose = purposesArray[userIndex];
-        const firebaseStartTime = rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`];
-        let durationMinutes = 1;
-        if (firebaseStartTime) { durationMinutes = Math.max(1, Math.floor((now - firebaseStartTime) / 60000)); }
-
         updates[`AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`] = null;
         usersArray.splice(userIndex, 1);
         purposesArray.splice(userIndex, 1);
@@ -243,9 +248,8 @@ window.submitWaterPurpose = function(purpose) {
         updates['AquaSync/Realtime_Status/Pump_Timeout'] = Math.max(globalPumpTimeout, newTimeoutTimestamp);
         update(ref(database), updates);
     } else {
-        // JALUR AWAL NYALAKAN POMPA BARU
-        updates['AquaSync/Control/Button_condition'] = true; // Pemicu SSR Utama ke ESP32
-        updates['AquaSync/Realtime_Status/Pump_Button'] = 0;   // Biarkan 0 dulu (Menunggu validasi getaran)
+        updates['AquaSync/Control/Button_condition'] = true; 
+        updates['AquaSync/Realtime_Status/Pump_Button'] = 0;   
         updates['AquaSync/Realtime_Status/Vibration'] = false;
         updates['AquaSync/Realtime_Status/Active_User'] = loggedInUserEmail;
         updates['AquaSync/Realtime_Status/Water_Purpose'] = purpose;
