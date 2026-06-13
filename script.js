@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import { getDatabase, ref, onValue, set, update, push } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -39,9 +39,10 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
+// 🔥 JALUR PIPA REFERENSI DATABASE SINKRON ASLI FIREBASE
 const realtimeRef = ref(database, 'AquaSync/Realtime_Status');
-const energyRef = ref(database, 'AquaSync/Energy_Usage');
 const predictionRef = ref(database, 'AquaSync/Prediction');
+const historyRef = ref(database, 'AquaSync/History_Mingguan'); 
 
 let currentPumpState = 0; 
 let handshakeInterval = null; 
@@ -53,12 +54,45 @@ const rupiahFormatter = new Intl.NumberFormat('id-ID', {
     style: 'currency', currency: 'IDR', maximumFractionDigits: 0
 });
 
-// A. MENDENGAR DATABASE REALTIME CLOUD + EKSEKUSI ANIMASI NYATA
+// =================================================================
+// A. MENDENGAR DATABASE REALTIME CLOUD + EKSEKUSI MONITORING TOREN
+// =================================================================
 onValue(realtimeRef, (snapshot) => {
     const data = snapshot.val();
     if (data) {
         rawFirebaseSnapshot = data; 
-        document.getElementById('valWaterLevel').innerText = data.Water_Level + "%";
+        
+        // --- 1. CETAK PARAMETER KELISTRIKAN SENSOR PZEM ASLI DARI REALTIME_STATUS ---
+        if (document.getElementById('valVoltage')) {
+            document.getElementById('valVoltage').innerText = data.Voltage ? data.Voltage.toFixed(1) + " V" : "-- V";    
+        }
+        if (document.getElementById('valCurrent')) {
+            document.getElementById('valCurrent').innerText = data.Current ? data.Current.toFixed(2) + " A" : "-- A";    
+        }
+        if (document.getElementById('valPower')) {
+            document.getElementById('valPower').innerText = data.Power ? data.Power.toFixed(1) + " W" : "-- W";        
+        }
+        if (document.getElementById('valEnergy')) {
+            document.getElementById('valEnergy').innerText = data.Energy ? data.Energy.toFixed(3) + " kWh" : "-- kWh";    
+        }
+
+        // --- 2. ⚡ INTEGRASI ARGO RUPIAH LIVE REAL-TIME NYATA ---
+        const currentKwh = data.Energy || 0;
+        const hitungRupiahLive = Math.round(currentKwh * 1444.70);
+
+        const actualBillElem = document.getElementById('valActualBill'); 
+        if (actualBillElem) {
+            if (hitungRupiahLive > 0 && hitungRupiahLive < 100) {
+                actualBillElem.innerText = "Rp " + hitungRupiahLive;
+            } else {
+                actualBillElem.innerText = rupiahFormatter.format(hitungRupiahLive);
+            }
+        }
+
+        // --- 3. MONITORING STATUS INDIKATOR TOREN AIR ---
+        if (document.getElementById('valWaterLevel')) {
+            document.getElementById('valWaterLevel').innerText = data.Water_Level + "%";
+        }
         
         const waterFillElem = document.getElementById('torenWaterFill');
         if (waterFillElem) { waterFillElem.style.height = data.Water_Level + "%"; }
@@ -77,7 +111,7 @@ onValue(realtimeRef, (snapshot) => {
         const forceStopBtn = document.getElementById('forceStopBtn');
 
         if (data.Pump_Button === 1) {
-            forceStopBtn.style.display = 'block'; 
+            if (forceStopBtn) forceStopBtn.style.display = 'block'; 
 
             if (data.Vibration === true && !isVibrationValidated) {
                 isVibrationValidated = true;
@@ -87,9 +121,10 @@ onValue(realtimeRef, (snapshot) => {
             }
 
             if (isVibrationValidated) {
-                bigStatus.innerText = "POMPA AKTIF";
-                bigStatus.style.color = "#36c2b5"; 
-                
+                if (bigStatus) {
+                    bigStatus.innerText = "POMPA AKTIF";
+                    bigStatus.style.color = "#36c2b5"; 
+                }
                 suntikVisualDinamis(pumpVisual, URI_VISUAL_AKTIF, "⚡🌀");
                 
                 const usersArray = currentActiveUsers.split(' + ');
@@ -105,60 +140,55 @@ onValue(realtimeRef, (snapshot) => {
                         </div>
                     `;
                 });
-                bigDetail.innerHTML = htmlContent;
+                if (bigDetail) bigDetail.innerHTML = htmlContent;
             } else {
-                bigStatus.innerText = "MEMVERIFIKASI...";
-                bigStatus.style.color = "#fdcb6e"; 
-                
+                if (bigStatus) {
+                    bigStatus.innerText = "MEMVERIFIKASI...";
+                    bigStatus.style.color = "#fdcb6e"; 
+                }
                 suntikVisualDinamis(pumpVisual, URI_VISUAL_VERIFIKASI, "⏳");
-                
-                bigDetail.innerHTML = `<div>Menunggu respons balik mekanis dari sensor getaran...</div>`;
+                if (bigDetail) bigDetail.innerHTML = `<div>Menunggu respons balik mekanis dari sensor getaran...</div>`;
             }
         } else {
             isVibrationValidated = false;
-            forceStopBtn.style.display = 'none'; 
+            if (forceStopBtn) forceStopBtn.style.display = 'none'; 
             clearInterval(handshakeInterval);
             clearInterval(activityTimerInterval);
             
-            bigStatus.innerText = "POMPA NON-AKTIF";
-            bigStatus.style.color = "#ff7675"; 
-            
+            if (bigStatus) {
+                bigStatus.innerText = "POMPA NON-AKTIF";
+                bigStatus.style.color = "#ff7675"; 
+            }
             suntikVisualDinamis(pumpVisual, URI_VISUAL_STANDBY, "💤");
-            
-            bigDetail.innerHTML = `<div>Sistem dalam kondisi standby aman</div>`;
+            if (bigDetail) bigDetail.innerHTML = `<div>Sistem dalam kondisi standby aman</div>`;
         }
 
         if (data.Pump_Button === 1 && isVibrationValidated) {
             const btn = document.getElementById('pBtn');
-            btn.classList.add('on'); 
-            btn.innerText = 'JOIN'; 
+            if (btn) {
+                btn.classList.add('on'); 
+                btn.innerText = 'JOIN'; 
+            }
         } else if (!isVibrationValidated && data.Pump_Button === 0) {
             updatePumpUI(0);
         }
     }
 });
 
-// B. SINKRONISASI DATA KELISTRIKAN SENSOR PZEM (DISAMAKAN DENGAN FORMAT .INO)
-onValue(energyRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-        document.getElementById('valVoltage').innerText = data.Voltage + " V";    
-        document.getElementById('valCurrent').innerText = data.Current + " A";    
-        document.getElementById('valPower').innerText = data.Power + " W";        
-        document.getElementById('valEnergy').innerText = data.Energy + " kWh";    
-    }
-});
-
-// C. REAL-TIME RE-DRAW PREDISKI MINGGUAN AI DAN NOTIFIKASI TIME WINDOW
+// =================================================================
+// B. REAL-TIME RE-DRAW PREDIKSI MINGGUAN AI + OTO-ARCHIVE RESETER
+// =================================================================
 onValue(predictionRef, (snapshot) => {
     const data = snapshot.val();
     if (data && data.Monthly_Bill) {
-        document.getElementById('valPrediction').innerText = rupiahFormatter.format(data.Monthly_Bill);
+        const predElem = document.getElementById('valPrediction');
+        if (predElem) { predElem.innerText = rupiahFormatter.format(data.Monthly_Bill); }
     }
 
     const sekarang = new Date();
-    const hariIni = sekarang.getDay(); 
-    const jamIni = aerospace = sekarang.getHours();
+    const hariIni = sekarang.getDay(); // 0 = Minggu
+    const jamIni = sekarang.getHours();
+    const menitIni = sekarang.getMinutes();
     const notifElemen = document.getElementById('resetNotification');
 
     if (notifElemen) {
@@ -172,13 +202,88 @@ onValue(predictionRef, (snapshot) => {
                 notifElemen.innerHTML = "ℹ️ Info: Hari terakhir siklus mingguan. Reset otomatis nanti malam.";
                 notifElemen.style.background = "rgba(255,255,255,0.2)";
             }
+
+            // --- EKSEKUSI AUTO ARCHIVE: MINGGU MALAM JAM 23:59 WIB ---
+            if (jamIni === 23 && menitIni === 59) {
+                if (!localStorage.getItem('isAlreadyBackedUpThisWeek')) {
+                    console.log("🚀 MEMULAI PROSES ARCHIVING DATA MINGGUAN...");
+                    
+                    const currentEnergy = rawFirebaseSnapshot.Energy || 0;
+                    const hitungRupiahFinal = Math.round(currentEnergy * 1444.70);
+                    
+                    const paketArsip = {
+                        Tanggal_Backup: sekarang.toLocaleDateString('id-ID'),
+                        Total_Energy: currentEnergy,
+                        Total_Bill: hitungRupiahFinal,
+                        Timestamp: Date.now()
+                    };
+
+                    push(historyRef, paketArsip).then(() => {
+                        console.log("✅ DATA BERHASIL DI-ARSIPKAN KE HISTORY_MINGGUAN!");
+                        
+                        const updatesReset = {};
+                        updatesReset['AquaSync/Realtime_Status/Energy'] = 0;
+                        updatesReset['AquaSync/Realtime_Status/Actual_Bill'] = 0;
+                        
+                        return update(ref(database), updatesReset);
+                    }).then(() => {
+                        console.log("🔄 REALTIME ENERGY RESET TO 0! SIAP UNTUK MINGGU BARU.");
+                        localStorage.setItem('isAlreadyBackedUpThisWeek', 'true');
+                    }).catch((err) => {
+                        console.error("Gagal backup data:", err);
+                    });
+                }
+            }
         } else {
             notifElemen.style.display = 'none';
+            localStorage.removeItem('isAlreadyBackedUpThisWeek');
         }
     }
 });
 
-// 2. INTERFACE BUTTON CONTROL LOGIC
+// =================================================================
+// C. REAL-TIME PENARIK DATA HISTORI UNTUK DISPLAY WIDGET E-STATEMENT
+// =================================================================
+onValue(historyRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+        console.log("🎯 Data arsip History_Mingguan terdeteksi di Web:", data);
+        
+        let totalTagihanKumulatif = 0;
+        let htmlTableContent = "";
+
+        for (let key in data) {
+            const mingguIni = data[key];
+            totalTagihanKumulatif += mingguIni.Total_Bill || 0;
+
+            htmlTableContent += `
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee;">📅 ${mingguIni.Tanggal_Backup || '-'}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${mingguIni.Total_Energy ? mingguIni.Total_Energy.toFixed(3) : 0} kWh</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; font-weight: bold; color: #2ecc71;">${rupiahFormatter.format(mingguIni.Total_Bill || 0)}</td>
+                </tr>
+            `;
+        }
+
+        const totalEStatementElem = document.getElementById('valEStatementTotal');
+        if (totalEStatementElem) {
+            totalEStatementElem.innerText = rupiahFormatter.format(totalTagihanKumulatif);
+        }
+
+        const tableBodyElem = document.getElementById('tableEStatementBody');
+        if (tableBodyElem) {
+            tableBodyElem.innerHTML = htmlTableContent;
+        }
+    } else {
+        if (document.getElementById('valEStatementTotal')) {
+            document.getElementById('valEStatementTotal').innerText = "Rp 0";
+        }
+    }
+});
+
+// =================================================================
+// D. INTERFACE BUTTON CONTROL LOGIC & MODAL ACTION
+// =================================================================
 window.handlePumpClick = function() {
     if (currentPumpState === 1 && isVibrationValidated) {
         if (currentActiveUsers.includes(loggedInUserEmail)) {
@@ -206,9 +311,6 @@ window.openJoinMenuInstead = function() {
     document.getElementById('purposeModal').style.display = 'flex';
 }
 
-// =================================================================
-// LOGIKA REKALKULASI HYBRID: INTEGRASI GRAPH CLOUD (ANTI-BUG)
-// =================================================================
 window.checkoutUserSession = function() {
     document.getElementById('sessionModal').style.display = 'none';
 
@@ -247,12 +349,6 @@ window.checkoutUserSession = function() {
         const safePurposeKey = myPurpose.split(' ')[0]; 
         const oldPurposeMin = currentStats.Purposes[safePurposeKey] || 0;
         updates[`AquaSync/Stats_Summary/Purposes/${safePurposeKey}`] = oldPurposeMin + durationMinutes;
-        
-        const currentKwh = (250 * (durationMinutes / 60)) / 1000;
-        const currentRupiah = Math.round(currentKwh * 1444.70);
-        const oldActualBill = (rawFirebaseSnapshot.Energy_Usage && rawFirebaseSnapshot.Energy_Usage.Actual_Bill) || 0;
-        updates[`AquaSync/Energy_Usage/Actual_Bill`] = oldActualBill + currentRupiah;
-
         updates[`AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`] = null;
 
         usersArray.splice(userIndex, 1);
@@ -302,7 +398,6 @@ window.checkoutUserSession = function() {
 }
 
 window.submitWaterPurpose = function(purpose) {
-    document.getElementById('purposeModal').style.none; // Tetap ikuti penulisan lamamu
     document.getElementById('purposeModal').style.display = 'none';
 
     let durationMinutes = 0;
@@ -338,7 +433,6 @@ window.submitWaterPurpose = function(purpose) {
     } else {
         newTimeoutTimestamp = durationMinutes > 0 ? now + (durationMinutes * 60000) : 0;
         
-        // 🎯 TUNTUTAN 1: Update Button_condition ke TRUE bersamaan saat tombol pertama kali dipicu
         const initUpdates = {};
         initUpdates['AquaSync/Control/Button_condition'] = true;
         
@@ -367,7 +461,6 @@ window.triggerForceStop = function() {
 
 function suntikVisualDinamis(elementTarget, uriGambar, emojiSerep) {
     if (!elementTarget) return;
-    
     const adaGambarSekarang = elementTarget.querySelector('img');
     const tulisanSekarang = elementTarget.innerText;
 
@@ -389,10 +482,7 @@ function sendPumpStateToFirebase(state, user, purpose, timeoutTimestamp) {
     updates['AquaSync/Realtime_Status/Water_Purpose'] = purpose;
     updates['AquaSync/Realtime_Status/Pump_Timeout'] = timeoutTimestamp;
     
-    // 🎯 TUNTUTAN 2: Jika state pompa dimatikan (0), pastikan Button_condition ikut diset ke FALSE
-    if (state === 0) {
-        updates['AquaSync/Control/Button_condition'] = false;
-    }
+    if (state === 0) { updates['AquaSync/Control/Button_condition'] = false; }
 
     if (state === 0 && rawFirebaseSnapshot) {
         Object.keys(rawFirebaseSnapshot).forEach(key => {
@@ -423,7 +513,9 @@ function startHandshakeTimeout() {
         timeLeft--;
         const minutes = Math.floor(timeLeft / 60).toString().padStart(2, '0');
         const seconds = (timeLeft % 60).toString().padStart(2, '0');
-        document.getElementById('tDisplay').innerText = `${minutes}:${seconds}`;
+        
+        const tDisp = document.getElementById('tDisplay');
+        if (tDisp) tDisp.innerText = `${minutes}:${seconds}`;
 
         if (timeLeft <= 0) {
             clearInterval(handshakeInterval);
@@ -438,10 +530,10 @@ function startActivityCountdown() {
     const timerDisplay = document.getElementById('tDisplay');
     
     if (globalPumpTimeout === 0) {
-        timerDisplay.style.display = 'none';
+        if (timerDisplay) timerDisplay.style.display = 'none';
         return;
     }
-    timerDisplay.style.display = 'block';
+    if (timerDisplay) timerDisplay.style.display = 'block';
 
     activityTimerInterval = setInterval(() => {
         const now = Date.now();
@@ -449,14 +541,14 @@ function startActivityCountdown() {
 
         if (difference <= 0) {
             clearInterval(activityTimerInterval);
-            timerDisplay.style.display = 'none';
+            if (timerDisplay) timerDisplay.style.display = 'none';
             alert("⏰ WAKTU HABIS: Pompa otomatis dimatikan.");
             sendPumpStateToFirebase(0, "-", "-", 0); 
         } else {
             const totalSeconds = Math.floor(difference / 1000);
             const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
             const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-            timerDisplay.innerText = `${minutes}:${seconds}`;
+            if (timerDisplay) timerDisplay.innerText = `${minutes}:${seconds}`;
         }
     }, 1000);
 }
@@ -465,30 +557,39 @@ function updatePumpUI(state, timeText = "01:00") {
     const btn = document.getElementById('pBtn');
     const timer = document.getElementById('tDisplay');
 
+    if (!btn) return;
+
     if (state === 1) {
         btn.classList.add('on'); 
         btn.innerText = 'WAIT';
         btn.style.background = '#fdcb6e'; 
         btn.style.color = 'white';
-        timer.style.display = 'block';
-        timer.style.color = "#fdcb6e"; 
-        timer.innerText = timeText;
+        if (timer) {
+            timer.style.display = 'block';
+            timer.style.color = "#fdcb6e"; 
+            timer.innerText = timeText;
+        }
     } else {
         btn.classList.remove('on'); 
         btn.innerText = 'OFF';
         btn.style.background = '#dfe6e9'; 
         btn.style.color = '#636e72';
-        timer.style.display = 'none';
+        if (timer) timer.style.display = 'none';
     }
 }
 
 function updatePumpUISuccess() {
     const btn = document.getElementById('pBtn');
     const timer = document.getElementById('tDisplay');
-    btn.classList.add('on'); 
-    btn.innerText = 'JOIN'; 
-    btn.style.background = '#36c2b5'; 
-    btn.style.color = 'white';
-    timer.style.display = 'block'; 
-    timer.style.color = "#36c2b5"; 
+    
+    if (btn) {
+        btn.classList.add('on'); 
+        btn.innerText = 'JOIN'; 
+        btn.style.background = '#36c2b5'; 
+        btn.style.color = 'white';
+    }
+    if (timer) {
+        timer.style.display = 'block'; 
+        timer.style.color = "#36c2b5"; 
+    }
 }
