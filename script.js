@@ -28,6 +28,17 @@ let currentActiveUsers = "-";
 let currentWaterPurposes = "-";
 let rawFirebaseSnapshot = {}; 
 
+let currentPumpState = 0; 
+let handshakeInterval = null; 
+let activityTimerInterval = null; 
+let isVibrationValidated = false; 
+let globalPumpTimeout = 0; 
+let localLockBypass = false; 
+
+const rupiahFormatter = new Intl.NumberFormat('id-ID', {
+    style: 'currency', currency: 'IDR', maximumFractionDigits: 0
+});
+
 // 1. VERIFIKASI KEAMANAN ACC & SUNTIK NAMA USER LOGIN
 onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -43,16 +54,6 @@ onAuthStateChanged(auth, (user) => {
 const realtimeRef = ref(database, 'AquaSync/Realtime_Status');
 const predictionRef = ref(database, 'AquaSync/Prediction');
 const historyRef = ref(database, 'AquaSync/History_Mingguan'); 
-
-let currentPumpState = 0; 
-let handshakeInterval = null; 
-let activityTimerInterval = null; 
-let isVibrationValidated = false; 
-let globalPumpTimeout = 0; 
-
-const rupiahFormatter = new Intl.NumberFormat('id-ID', {
-    style: 'currency', currency: 'IDR', maximumFractionDigits: 0
-});
 
 // =================================================================
 // A. MENDENGAR DATABASE REALTIME CLOUD + EKSEKUSI MONITORING TOREN
@@ -100,6 +101,9 @@ onValue(realtimeRef, (snapshot) => {
         const vibrationElem = document.getElementById('valVibration');
         if (vibrationElem) { vibrationElem.innerText = data.Vibration; }
 
+        // 💡 SUNTIKAN BARIS PENGAMAN:
+        if (localLockBypass) return; 
+
         globalPumpTimeout = data.Pump_Timeout || 0;
         currentActiveUsers = data.Active_User || "-";
         currentWaterPurposes = data.Water_Purpose || "-";
@@ -131,15 +135,27 @@ onValue(realtimeRef, (snapshot) => {
                 const purposesArray = currentWaterPurposes.split(' + ');
                 let htmlContent = "";
 
-                usersArray.forEach((user, index) => {
-                    const purpose = purposesArray[index] || "Keperluan Umum";
+                // 💡 LOGIKA BARU: Jika user hanya 1 tapi punya banyak aktivitas, tampilkan semuanya sekaligus
+                if (usersArray.length === 1 && purposesArray.length > 1) {
                     htmlContent += `
-                        <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); box-shadow: 0 2px 5px rgba(0,0,0,0.01);">
-                            <span style="font-weight: 700; color: #2d3436;">👤 ${user}</span>
-                            <span style="color: #36c2b5; font-weight: 600; font-size: 13px;">➔ ${purpose}</span>
+                        <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); box-shadow: 0 2px 5px rgba(0,0,0,0.01); margin-bottom: 5px;">
+                            <span style="font-weight: 700; color: #2d3436;">👤 ${usersArray[0]}</span>
+                            <span style="color: #36c2b5; font-weight: 600; font-size: 13px; text-align: right; max-width: 60%; word-break: break-word;">➔ ${currentWaterPurposes}</span>
                         </div>
                     `;
-                });
+                } else {
+                    // Logika Multi-User standar seperti biasa
+                    usersArray.forEach((user, index) => {
+                        const purpose = purposesArray[index] || "Keperluan Umum";
+                        htmlContent += `
+                            <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); box-shadow: 0 2px 5px rgba(0,0,0,0.01); margin-bottom: 5px;">
+                                <span style="font-weight: 700; color: #2d3436;">👤 ${user}</span>
+                                <span style="color: #36c2b5; font-weight: 600; font-size: 13px;">➔ ${purpose}</span>
+                            </div>
+                        `;
+                    });
+                }
+                
                 if (bigDetail) bigDetail.innerHTML = htmlContent;
             } else {
                 if (bigStatus) {
@@ -186,8 +202,8 @@ onValue(predictionRef, (snapshot) => {
     }
 
     const sekarang = new Date();
-    const hariIni = sekarang.getDay(); // 0 = Minggu
-    const jamIni = sekarang.getHours();
+    const hariIni = sekarang.getDay(); 
+    const jamIni = aerospace = sekarang.getHours();
     const menitIni = sekarang.getMinutes();
     const notifElemen = document.getElementById('resetNotification');
 
@@ -203,11 +219,8 @@ onValue(predictionRef, (snapshot) => {
                 notifElemen.style.background = "rgba(255,255,255,0.2)";
             }
 
-            // --- EKSEKUSI AUTO ARCHIVE: MINGGU MALAM JAM 23:59 WIB ---
             if (jamIni === 23 && menitIni === 59) {
                 if (!localStorage.getItem('isAlreadyBackedUpThisWeek')) {
-                    console.log("🚀 MEMULAI PROSES ARCHIVING DATA MINGGUAN...");
-                    
                     const currentEnergy = rawFirebaseSnapshot.Energy || 0;
                     const hitungRupiahFinal = Math.round(currentEnergy * 1444.70);
                     
@@ -219,15 +232,11 @@ onValue(predictionRef, (snapshot) => {
                     };
 
                     push(historyRef, paketArsip).then(() => {
-                        console.log("✅ DATA BERHASIL DI-ARSIPKAN KE HISTORY_MINGGUAN!");
-                        
                         const updatesReset = {};
                         updatesReset['AquaSync/Realtime_Status/Energy'] = 0;
                         updatesReset['AquaSync/Realtime_Status/Actual_Bill'] = 0;
-                        
                         return update(ref(database), updatesReset);
                     }).then(() => {
-                        console.log("🔄 REALTIME ENERGY RESET TO 0! SIAP UNTUK MINGGU BARU.");
                         localStorage.setItem('isAlreadyBackedUpThisWeek', 'true');
                     }).catch((err) => {
                         console.error("Gagal backup data:", err);
@@ -247,8 +256,6 @@ onValue(predictionRef, (snapshot) => {
 onValue(historyRef, (snapshot) => {
     const data = snapshot.val();
     if (data) {
-        console.log("🎯 Data arsip History_Mingguan terdeteksi di Web:", data);
-        
         let totalTagihanKumulatif = 0;
         let htmlTableContent = "";
 
@@ -393,7 +400,12 @@ window.checkoutUserSession = function() {
         update(ref(database), updates).then(() => { currentPumpState = 1; });
 
     } else {
-        sendPumpStateToFirebase(0, "-", "-", 0).then(() => { update(ref(database), updates); });
+        // 💡 INTEGRASI HITUNG MUNDUR USER TERAKHIR MATIKAN POMPA
+        localLockBypass = true;
+        update(ref(database), { 'AquaSync/Control/Button_condition': false })
+            .then(() => {
+                startHandshakeMatiTimeout(); 
+            });
     }
 }
 
@@ -413,22 +425,37 @@ window.submitWaterPurpose = function(purpose) {
     updates[`AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`] = now;
 
     if (currentPumpState === 1 && globalPumpTimeout > now) {
-        if (!currentActiveUsers.includes(loggedInUserEmail)) { finalUsers = `${currentActiveUsers} + ${loggedInUserEmail}`; }
-        else { finalUsers = currentActiveUsers; }
+        if (!currentActiveUsers.includes(loggedInUserEmail)) { 
+            finalUsers = `${currentActiveUsers} + ${loggedInUserEmail}`; 
+        } else { 
+            finalUsers = currentActiveUsers; 
+        }
 
-        if (!currentWaterPurposes.includes(purpose)) { finalPurposes = `${currentWaterPurposes} + ${purpose}`; }
-        else { finalPurposes = currentWaterPurposes; }
+        if (!currentWaterPurposes.includes(purpose)) { 
+            finalPurposes = `${currentWaterPurposes} + ${purpose}`; 
+        } else { 
+            finalPurposes = currentWaterPurposes; 
+        }
 
         const remainingTimeMinutes = Math.floor((globalPumpTimeout - now) / 60000);
-        if (durationMinutes > remainingTimeMinutes) { newTimeoutTimestamp = now + (durationMinutes * 60000); }
-        else { newTimeoutTimestamp = globalPumpTimeout; }
+        if (durationMinutes > remainingTimeMinutes) { 
+            newTimeoutTimestamp = now + (durationMinutes * 60000); 
+        } else { 
+            newTimeoutTimestamp = globalPumpTimeout; 
+        }
 
         updates['AquaSync/Realtime_Status/Pump_Button'] = 1;
         updates['AquaSync/Realtime_Status/Active_User'] = finalUsers;
         updates['AquaSync/Realtime_Status/Water_Purpose'] = finalPurposes;
         updates['AquaSync/Realtime_Status/Pump_Timeout'] = newTimeoutTimestamp;
 
-        update(ref(database), updates).then(() => { currentPumpState = 1; });
+        update(ref(database), updates).then(() => { 
+            currentPumpState = 1; 
+            currentWaterPurposes = finalPurposes; 
+            currentActiveUsers = finalUsers;
+            globalPumpTimeout = newTimeoutTimestamp;
+            startActivityCountdown(); 
+        });
 
     } else {
         newTimeoutTimestamp = durationMinutes > 0 ? now + (durationMinutes * 60000) : 0;
@@ -455,7 +482,11 @@ window.closeSessionModal = function() { document.getElementById('sessionModal').
 
 window.triggerForceStop = function() {
     if (confirm("Apakah Anda yakin ingin mematikan pompa secara paksa?")) {
-        sendPumpStateToFirebase(0, "-", "-", 0);
+        localLockBypass = true;
+        update(ref(database), { 'AquaSync/Control/Button_condition': false })
+            .then(() => {
+                startHandshakeMatiTimeout(); 
+            });
     }
 }
 
@@ -521,6 +552,51 @@ function startHandshakeTimeout() {
             clearInterval(handshakeInterval);
             alert("⚠️ PERINGATAN: Pompa Gagal Diaktifkan! Tidak ada respon getaran.");
             sendPumpStateToFirebase(0, "-", "-", 0);
+        }
+    }, 1000);
+}
+
+// 🔥 FUNGSI TIMEOUT MEMATIKAN (BERSIH & MATIKAN TIMER LAMA BIAR GAK TABRAKAN)
+function startHandshakeMatiTimeout() {
+    clearInterval(handshakeInterval);
+    clearInterval(activityTimerInterval); 
+    isVibrationValidated = false;
+    let timeLeft = 60;
+    
+    updatePumpUI(1, "01:00"); 
+    const bigStatus = document.getElementById('bigPumpStatus');
+    if (bigStatus) { bigStatus.innerText = "VERIFIKASI MATI..."; bigStatus.style.color = "#fdcb6e"; }
+    const pumpVisual = document.getElementById('pumpVisual');
+    if (pumpVisual) pumpVisual.innerHTML = "⏳";
+
+    handshakeInterval = setInterval(() => {
+        timeLeft--;
+        const minutes = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+        const seconds = (timeLeft % 60).toString().padStart(2, '0');
+        
+        const tDisp = document.getElementById('tDisplay');
+        if (tDisp) tDisp.innerText = `${minutes}:${seconds}`;
+
+        if (rawFirebaseSnapshot.Vibration === false || rawFirebaseSnapshot.Vibration === "false") {
+            clearInterval(handshakeInterval);
+            localLockBypass = false;
+            
+            const finalUpdates = {};
+            finalUpdates['AquaSync/Realtime_Status/Pump_Button'] = 0;
+            finalUpdates['AquaSync/Realtime_Status/Active_User'] = "-";
+            finalUpdates['AquaSync/Realtime_Status/Water_Purpose'] = "-";
+            finalUpdates['AquaSync/Realtime_Status/Pump_Timeout'] = 0;
+            update(ref(database), finalUpdates);
+            
+            alert("✅ SUKSES: Pompa terverifikasi telah berhenti bergetar dan mati total.");
+        }
+
+        if (timeLeft <= 0) {
+            clearInterval(handshakeInterval);
+            localLockBypass = false;
+            alert("⚠️ POP-UP: Pompa gagal dimatikan, cek koneksi internet!");
+            update(ref(database), { 'AquaSync/Control/Button_condition': true });
+            startActivityCountdown(); 
         }
     }, 1000);
 }
