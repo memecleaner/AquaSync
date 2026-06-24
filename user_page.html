@@ -42,9 +42,14 @@
         
         <div class="profile-card">
             <div class="avatar">👑</div>
-            <h2 id="profileName" style="margin: 0; font-size: 20px; font-weight: 700;">Loading Name...</h2>
-            <p id="profileEmail" style="color: #7f8c8d; margin: 4px 0 15px 0; font-size: 13px;">loading.email@aquasync.com</p>
-            
+            <h2 id="profileName" style="margin:0;font-size:20px;font-weight:700;">
+            <span id="dynamicUserName">User</span>
+            </h2>
+
+            <p id="profileEmail"
+            style="color:#7f8c8d;margin:4px 0 15px 0;font-size:13px;">
+                <span id="dynamicUserEmail">user.email@aquasync.com</span>
+            </p>
             <div style="text-align: left; background: #f8f9fa; padding: 12px; border-radius: 12px; font-size: 12px; color: #2d3436; border: 1px solid rgba(0,0,0,0.02);">
                 🔑 Role Status: <span style="color: #00b894; font-weight: bold;">Premium User (Your Highness)</span><br>
                 🛡️ App Security: <span style="color: #6c5ce7; font-weight: bold;">Firebase Encrypted</span>
@@ -82,70 +87,94 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        // Panggil database modul juga untuk membaca link arsip statement
         import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
-          apiKey: "AIzaSyC9PuXQiQ2zCKfCMG3KTYoiU_kldIZmNxE",
-          authDomain: "aquasync-dda8c.firebaseapp.com",
-          projectId: "aquasync-dda8c",
-          databaseURL: "https://aquasync-dda8c-default-rtdb.asia-southeast1.firebasedatabase.app",
-          appId: "1:332004178563:web:d34bb11e834b4832a579b6"
+        apiKey: "AIzaSyC9PuXQiQ2zCKfCMG3KTYoiU_kldIZmNxE",
+        authDomain: "aquasync-dda8c.firebaseapp.com",
+        projectId: "aquasync-dda8c",
+        databaseURL: "https://aquasync-dda8c-default-rtdb.asia-southeast1.firebasedatabase.app",
+        appId: "1:332004178563:web:d34bb11e834b4832a579b6"
         };
 
+        // 1. INIT APP
         const app = initializeApp(firebaseConfig);
+
+        // 2. AUTH & DB (HARUS DULUAN)
         const auth = getAuth(app);
         const database = getDatabase(app);
 
+        // 3. BARU LISTENER
         onAuthStateChanged(auth, (user) => {
+
+            const nameEl = document.getElementById('dynamicUserName');
+            const emailEl = document.getElementById('dynamicUserEmail');
+
+            if (!nameEl || !emailEl) return;
+
             if (user) {
-                document.getElementById('profileName').innerText = user.email.split('@')[0];
-                document.getElementById('profileEmail').innerText = user.email;
+                const username = user.email.split('@')[0];
+                nameEl.innerText = username;
+                emailEl.innerText = user.email;
             } else {
-                window.location.href = "login_page.html";
+                window.location.href = "index.html";
             }
         });
 
+        // const firebaseConfig = {
+        //   apiKey: "AIzaSyC9PuXQiQ2zCKfCMG3KTYoiU_kldIZmNxE",
+        //   authDomain: "aquasync-dda8c.firebaseapp.com",
+        //   projectId: "aquasync-dda8c",
+        //   databaseURL: "https://aquasync-dda8c-default-rtdb.asia-southeast1.firebasedatabase.app",
+        //   appId: "1:332004178563:web:d34bb11e834b4832a579b6"
+        // };
+
+        // const app = initializeApp(firebaseConfig);
+        // const auth = getAuth(app);
+        // const database = getDatabase(app);
+
+        // Tambahkan ini di dalam script type="module" pada user_page_2.html
+        document.getElementById('btnLogout').addEventListener('click', () => {
+            signOut(auth).then(() => {
+                window.location.href = "index.html";
+            }).catch((error) => {
+                console.error("Gagal logout:", error);
+            });
+        });
+
         // ----------------------------------------------------
-        // LOGIKA MEMBACA DATA ARSIP E-STATEMENT DARI FIREBASE
+        // LOGIKA MEMBACA DATA ARSIP E-STATEMENT ASLI DARI FIREBASE
         // ----------------------------------------------------
-        const statementRef = ref(database, 'AquaSync/E_Statements');
-        onValue(statementRef, (snapshot) => {
-            // ----------------------------------------------------
-        // LOGIKA GENERATOR SIMULASI FILE E-STATEMENT MINGGUAN REALNYA
-        // ----------------------------------------------------
-        const statementRef = ref(database, 'AquaSync/E_Statements');
-        onValue(statementRef, (snapshot) => {
+        const historyRef = ref(database, 'AquaSync/History_Mingguan');
+        onValue(historyRef, (snapshot) => {
             const data = snapshot.val();
             const container = document.getElementById('statementListContainer');
             
-            // Kita buatkan dummy konten CSV yang rapi berdasarkan data skripsi Anda
-            const csvContent1 = "data:text/csv;charset=utf-8,Periode,User,Aktivitas,Durasi(Menit),Estimasi_kWh\n01-07 Juni,audrey,Mandi,40,0.1667\n01-07 Juni,user2,Mesin Cuci,120,0.5000\n01-07 Juni,user3,Cuci Piring,15,0.0625";
-            const csvContent2 = "data:text/csv;charset=utf-8,Periode,User,Aktivitas,Durasi(Menit),Estimasi_kWh\n08-14 Juni,audrey,Mesin Cuci,60,0.2500\n08-14 Juni,user2,Mandi,35,0.1458";
+            if (data) {
+                let listArr = [];
+                for (let key in data) { listArr.push(data[key]); }
+                
+                // Urutkan dari yang terbaru ke terlama
+                listArr.sort((a, b) => b.Timestamp - a.Timestamp);
 
-            // Tampilan daftar e-statement otomatis yang siap download file aslinya!
-            container.innerHTML = `
-                <div class="statement-card">
-                    <div class="statement-info">
-                        <div class="statement-date">📅 Periode 01 Juni - 07 Juni</div>
-                        <div class="statement-status">Status: Ready to download (.csv)</div>
-                    </div>
-                    <a href="${encodeURI(csvContent1)}" download="AquaSync_Statement_Minggu1.csv" class="download-btn">DOWNLOAD</a>
-                </div>
-                <div class="statement-card">
-                    <div class="statement-info">
-                        <div class="statement-date">📅 Periode 08 Juni - 14 Juni</div>
-                        <div class="statement-status">Status: Ready to download (.csv)</div>
-                    </div>
-                    <a href="${encodeURI(csvContent2)}" download="AquaSync_Statement_Minggu2.csv" class="download-btn">DOWNLOAD</a>
-                </div>
-            `;
-        });
-        });
-
-        document.getElementById('btnLogout').addEventListener('click', () => {
-            if (confirm("Apakah Anda yakin ingin keluar dari aplikasi AquaSync?")) {
-                signOut(auth).then(() => { window.location.href = "index.html"; });
+                let htmlContent = "";
+                listArr.forEach(item => {
+                    // Membuat CSV Dinamis dari data asli
+                    const csvContent = `data:text/csv;charset=utf-8,Periode,Total_Rupiah,Total_kWh\n${item.Tanggal_Backup},${item.Total_Bill},${item.Total_Energy}`;
+                    
+                    htmlContent += `
+                        <div class="statement-card">
+                            <div class="statement-info">
+                                <div class="statement-date">📅 Periode ${item.Tanggal_Backup || '-'}</div>
+                                <div class="statement-status">Status: Ready | ${item.Total_Energy ? item.Total_Energy.toFixed(3) : 0} kWh</div>
+                            </div>
+                            <a href="${encodeURI(csvContent)}" download="AquaSync_${item.Tanggal_Backup}.csv" class="download-btn">DOWNLOAD</a>
+                        </div>
+                    `;
+                });
+                container.innerHTML = htmlContent;
+            } else {
+                container.innerHTML = `<div style="text-align: center; color: #a4b0be; font-size: 13px; padding: 20px;">Belum ada arsip mingguan.</div>`;
             }
         });
     </script>

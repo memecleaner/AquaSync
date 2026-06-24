@@ -12,13 +12,6 @@ const firebaseConfig = {
   appId: "1:332004178563:web:d34bb11e834b4832a579b6"
 };
 
-// =================================================================
-// 🎨 DEFINISI JALUR ASET VISUAL (BERBASIS SUB-FOLDER LAPTOP)
-// =================================================================
-const URI_VISUAL_STANDBY = "clips/zzz_icon.png"; 
-const URI_VISUAL_VERIFIKASI = "clips/hourglass.png"; 
-const URI_VISUAL_AKTIF = ""; 
-
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const auth = getAuth(app);
@@ -34,12 +27,18 @@ let activityTimerInterval = null;
 let isVibrationValidated = false; 
 let globalPumpTimeout = 0; 
 let localLockBypass = false; 
+let statsSummaryCache = {
+    Users: {},
+    Purposes: {}
+};
 
 const rupiahFormatter = new Intl.NumberFormat('id-ID', {
     style: 'currency', currency: 'IDR', maximumFractionDigits: 0
 });
 
-// 1. VERIFIKASI KEAMANAN ACC & SUNTIK NAMA USER LOGIN
+// Daftar nama bulan Indonesia untuk penamaan otomatis periode E-Statement
+const namaBulanIndo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktobet", "November", "Desember"];
+
 onAuthStateChanged(auth, (user) => {
     if (user) {
         loggedInUserEmail = user.email.split('@')[0]; 
@@ -50,11 +49,19 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// 🔥 JALUR PIPA REFERENSI DATABASE SINKRON ASLI FIREBASE
 const realtimeRef = ref(database, 'AquaSync/Realtime_Status');
 const predictionRef = ref(database, 'AquaSync/Prediction');
 const historyRef = ref(database, 'AquaSync/History_Mingguan'); 
+const statsRef = ref(database, 'AquaSync/Stats_Summary');
 
+onValue(statsRef, (snapshot) => {
+
+    statsSummaryCache = snapshot.val() || {
+        Users: {},
+        Purposes: {}
+    };
+
+});
 // =================================================================
 // A. MENDENGAR DATABASE REALTIME CLOUD + EKSEKUSI MONITORING TOREN
 // =================================================================
@@ -63,7 +70,6 @@ onValue(realtimeRef, (snapshot) => {
     if (data) {
         rawFirebaseSnapshot = data; 
         
-        // --- 1. CETAK PARAMETER KELISTRIKAN SENSOR PZEM ASLI DARI REALTIME_STATUS ---
         if (document.getElementById('valVoltage')) {
             document.getElementById('valVoltage').innerText = data.Voltage ? data.Voltage.toFixed(1) + " V" : "-- V";    
         }
@@ -77,7 +83,6 @@ onValue(realtimeRef, (snapshot) => {
             document.getElementById('valEnergy').innerText = data.Energy ? data.Energy.toFixed(3) + " kWh" : "-- kWh";    
         }
 
-        // --- 2. ⚡ INTEGRASI ARGO RUPIAH LIVE REAL-TIME NYATA ---
         const currentKwh = data.Energy || 0;
         const hitungRupiahLive = Math.round(currentKwh * 1444.70);
 
@@ -90,7 +95,6 @@ onValue(realtimeRef, (snapshot) => {
             }
         }
 
-        // --- 3. MONITORING STATUS INDIKATOR TOREN AIR ---
         if (document.getElementById('valWaterLevel')) {
             document.getElementById('valWaterLevel').innerText = data.Water_Level + "%";
         }
@@ -101,7 +105,6 @@ onValue(realtimeRef, (snapshot) => {
         const vibrationElem = document.getElementById('valVibration');
         if (vibrationElem) { vibrationElem.innerText = data.Vibration; }
 
-        // 💡 SUNTIKAN BARIS PENGAMAN:
         if (localLockBypass) return; 
 
         globalPumpTimeout = data.Pump_Timeout || 0;
@@ -129,40 +132,26 @@ onValue(realtimeRef, (snapshot) => {
                     bigStatus.innerText = "POMPA AKTIF";
                     bigStatus.style.color = "#36c2b5"; 
                 }
-                suntikVisualDinamis(pumpVisual, URI_VISUAL_AKTIF, "⚡🌀");
                 
                 const usersArray = currentActiveUsers.split(' + ');
                 const purposesArray = currentWaterPurposes.split(' + ');
                 let htmlContent = "";
 
-                // 💡 LOGIKA BARU: Jika user hanya 1 tapi punya banyak aktivitas, tampilkan semuanya sekaligus
-                if (usersArray.length === 1 && purposesArray.length > 1) {
+                usersArray.forEach((user, index) => {
+                    const purpose = purposesArray[index] || "Keperluan Umum";
                     htmlContent += `
                         <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); box-shadow: 0 2px 5px rgba(0,0,0,0.01); margin-bottom: 5px;">
-                            <span style="font-weight: 700; color: #2d3436;">👤 ${usersArray[0]}</span>
-                            <span style="color: #36c2b5; font-weight: 600; font-size: 13px; text-align: right; max-width: 60%; word-break: break-word;">➔ ${currentWaterPurposes}</span>
+                            <span style="font-weight: 700; color: #2d3436;">👤 ${user}</span>
+                            <span style="color: #36c2b5; font-weight: 600; font-size: 13px;">➔ ${purpose}</span>
                         </div>
                     `;
-                } else {
-                    // Logika Multi-User standar seperti biasa
-                    usersArray.forEach((user, index) => {
-                        const purpose = purposesArray[index] || "Keperluan Umum";
-                        htmlContent += `
-                            <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); box-shadow: 0 2px 5px rgba(0,0,0,0.01); margin-bottom: 5px;">
-                                <span style="font-weight: 700; color: #2d3436;">👤 ${user}</span>
-                                <span style="color: #36c2b5; font-weight: 600; font-size: 13px;">➔ ${purpose}</span>
-                            </div>
-                        `;
-                    });
-                }
-                
+                });
                 if (bigDetail) bigDetail.innerHTML = htmlContent;
             } else {
                 if (bigStatus) {
                     bigStatus.innerText = "MEMVERIFIKASI...";
                     bigStatus.style.color = "#fdcb6e"; 
                 }
-                suntikVisualDinamis(pumpVisual, URI_VISUAL_VERIFIKASI, "⏳");
                 if (bigDetail) bigDetail.innerHTML = `<div>Menunggu respons balik mekanis dari sensor getaran...</div>`;
             }
         } else {
@@ -175,7 +164,6 @@ onValue(realtimeRef, (snapshot) => {
                 bigStatus.innerText = "POMPA NON-AKTIF";
                 bigStatus.style.color = "#ff7675"; 
             }
-            suntikVisualDinamis(pumpVisual, URI_VISUAL_STANDBY, "💤");
             if (bigDetail) bigDetail.innerHTML = `<div>Sistem dalam kondisi standby aman</div>`;
         }
 
@@ -192,40 +180,56 @@ onValue(realtimeRef, (snapshot) => {
 });
 
 // =================================================================
-// B. REAL-TIME RE-DRAW PREDIKSI MINGGUAN AI + OTO-ARCHIVE RESETER
+// B. 🔥 PREDIKSI MINGGUAN AI + PROYEKSI BULANAN + OTO-ARCHIVE
 // =================================================================
 onValue(predictionRef, (snapshot) => {
     const data = snapshot.val();
     if (data && data.Monthly_Bill) {
-        const predElem = document.getElementById('valPrediction');
-        if (predElem) { predElem.innerText = rupiahFormatter.format(data.Monthly_Bill); }
+        const prediksiMingguIni = data.Monthly_Bill;
+        const prediksiBulanIni = prediksiMingguIni * 4; // Logika Ekstrapolasi Jembatan Waktu
+
+        // Cetak masing-masing ke elemen display target
+        const predMingguElem = document.getElementById('valPrediction');
+        if (predMingguElem) { predMingguElem.innerText = rupiahFormatter.format(prediksiMingguIni); }
+
+        const predBulanElem = document.getElementById('valPredictionMonthly');
+        if (predBulanElem) { predBulanElem.innerText = rupiahFormatter.format(prediksiBulanIni); }
     }
 
     const sekarang = new Date();
     const hariIni = sekarang.getDay(); 
-    const jamIni = aerospace = sekarang.getHours();
-    const menitIni = sekarang.getMinutes();
+    const jamIni = sekarang.getHours();
     const notifElemen = document.getElementById('resetNotification');
 
     if (notifElemen) {
         if (hariIni === 0) { 
             if (jamIni >= 18) { 
                 notifElemen.style.display = 'block';
-                notifElemen.innerHTML = "⚠️ PEMBERITAHUAN: Pengumpulan data minggu ini selesai pukul 23:59. Data Aktual akan di-reset otomatis!";
+                notifElemen.innerHTML = "⚠️ PEMBERITAHUAN: Pengumpulan data minggu ini selesai malam ini pukul 23:59. E-Statement otomatis terbit!";
                 notifElemen.style.background = "#ff7675"; 
             } else {
                 notifElemen.style.display = 'block';
-                notifElemen.innerHTML = "ℹ️ Info: Hari terakhir siklus mingguan. Reset otomatis nanti malam.";
+                notifElemen.innerHTML = "ℹ️ Info: Hari terakhir siklus mingguan. E-Statement otomatis diproses nanti malam.";
                 notifElemen.style.background = "rgba(255,255,255,0.2)";
             }
 
-            if (jamIni === 23 && menitIni === 59) {
-                if (!localStorage.getItem('isAlreadyBackedUpThisWeek')) {
+            if (jamIni === 23) {
+                const currentWeekId = "week_id_" + sekarang.getFullYear() + "_" + Math.floor(sekarang.getTime() / (7 * 24 * 60 * 60 * 1000));
+                if (!localStorage.getItem(currentWeekId)) {
                     const currentEnergy = rawFirebaseSnapshot.Energy || 0;
                     const hitungRupiahFinal = Math.round(currentEnergy * 1444.70);
                     
+                    const seninLalu = new Date(sekarang);
+                    seninLalu.setDate(sekarang.getDate() - 6);
+                    
+                    // 💡 FIX PERIODE BULAN: Mengambil nama bulan dinamis agar tidak stuck di kata "Juni"
+                    const namaBulanSenin = namaBulanIndo[seninLalu.getMonth()];
+                    const namaBulanMinggu = namaBulanIndo[sekarang.getMonth()];
+                    
+                    let stringPeriode = `${seninLalu.getDate().toString().padStart(2,'0')} ${namaBulanSenin} - ${sekarang.getDate().toString().padStart(2,'0')} ${namaBulanMinggu}`;
+
                     const paketArsip = {
-                        Tanggal_Backup: sekarang.toLocaleDateString('id-ID'),
+                        Tanggal_Backup: stringPeriode,
                         Total_Energy: currentEnergy,
                         Total_Bill: hitungRupiahFinal,
                         Timestamp: Date.now()
@@ -237,40 +241,48 @@ onValue(predictionRef, (snapshot) => {
                         updatesReset['AquaSync/Realtime_Status/Actual_Bill'] = 0;
                         return update(ref(database), updatesReset);
                     }).then(() => {
-                        localStorage.setItem('isAlreadyBackedUpThisWeek', 'true');
+                        localStorage.setItem(currentWeekId, 'true');
                     }).catch((err) => {
-                        console.error("Gagal backup data:", err);
+                        console.error("Gagal backup otomatis:", err);
                     });
                 }
             }
         } else {
-            notifElemen.style.display = 'none';
-            localStorage.removeItem('isAlreadyBackedUpThisWeek');
+            notifElemen.style.none = 'none';
         }
     }
 });
 
 // =================================================================
-// C. REAL-TIME PENARIK DATA HISTORI UNTUK DISPLAY WIDGET E-STATEMENT
+// C. 💡 LOGIKA AMAN: LIST URUT MENURUN (TERBARU SELALU DI ATAS)
 // =================================================================
 onValue(historyRef, (snapshot) => {
     const data = snapshot.val();
     if (data) {
         let totalTagihanKumulatif = 0;
-        let htmlTableContent = "";
+        let listArray = [];
 
         for (let key in data) {
             const mingguIni = data[key];
             totalTagihanKumulatif += mingguIni.Total_Bill || 0;
-
-            htmlTableContent += `
-                <tr>
-                    <td style="padding: 10px; border-bottom: 1px solid #eee;">📅 ${mingguIni.Tanggal_Backup || '-'}</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${mingguIni.Total_Energy ? mingguIni.Total_Energy.toFixed(3) : 0} kWh</td>
-                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; font-weight: bold; color: #2ecc71;">${rupiahFormatter.format(mingguIni.Total_Bill || 0)}</td>
-                </tr>
-            `;
+            listArray.push(mingguIni);
         }
+
+        // Urutkan array berdasarkan Timestamp terbesar (Terbaru ditaruh paling atas)
+        listArray.sort((a, b) => b.Timestamp - a.Timestamp);
+
+        let htmlTableContent = "";
+        listArray.forEach((mingguIni) => {
+            htmlTableContent += `
+                <div style="background: white; padding: 16px; border-radius: 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                    <div>
+                        <div style="font-weight: 600; color: #2d3436; font-size: 15px;">📅 Periode ${mingguIni.Tanggal_Backup || '-'}</div>
+                        <div style="font-size: 13px; color: #636e72; margin-top: 2px;">Status: Ready to download (.csv) | ${mingguIni.Total_Energy ? mingguIni.Total_Energy.toFixed(3) : 0} kWh</div>
+                    </div>
+                    <button style="background: #36c2b5; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">DOWNLOAD</button>
+                </div>
+            `;
+        });
 
         const totalEStatementElem = document.getElementById('valEStatementTotal');
         if (totalEStatementElem) {
@@ -318,96 +330,176 @@ window.openJoinMenuInstead = function() {
     document.getElementById('purposeModal').style.display = 'flex';
 }
 
-window.checkoutUserSession = function() {
+window.checkoutUserSession = async function() {
+
     document.getElementById('sessionModal').style.display = 'none';
 
     const usersArray = currentActiveUsers.split(' + ');
     const purposesArray = currentWaterPurposes.split(' + ');
+
     const userIndex = usersArray.indexOf(loggedInUserEmail);
-    
-    let myPurpose = "Keperluan Umum";
+
+    let submitWaterPurpose = "Keperluan Umum";
     const now = Date.now();
-    const updates = {};
+
+    let updates = {};
 
     if (userIndex !== -1) {
-        myPurpose = purposesArray[userIndex];
-        
-        const firebaseStartTime = rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`];
+
+        submitWaterPurpose = purposesArray[userIndex];
+
+        const firebaseStartTime =
+            rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`];
+
+        console.log("USER LOGIN :", loggedInUserEmail);
+        console.log("START TIME :", firebaseStartTime);
+        console.log("NOW :", now);
+
         let durationMinutes = 1;
+
         if (firebaseStartTime) {
-            durationMinutes = Math.max(1, Math.floor((now - firebaseStartTime) / 60000));
+
+            const diffMs = now - firebaseStartTime;
+
+            console.log("SELISIH MS :", diffMs);
+
+            durationMinutes = Math.ceil(diffMs / 60000);
+
+            if (durationMinutes < 1) {
+                durationMinutes = 1;
+            }
         }
 
-        const logRef = ref(database, 'AquaSync/Log_Aktivitas');
-        set(logRef, {
-            User_Terakhir: loggedInUserEmail,
-            Aktivitas_Terakhir: myPurpose,
-            Durasi_Asli_Menit: durationMinutes,
-            Timestamp_Mati: now
-        });
+        console.log("DURASI FINAL :", durationMinutes);
 
-        const currentStats = rawFirebaseSnapshot.Stats_Summary || { Users: {}, Purposes: {} };
+        const currentStats = statsSummaryCache || {
+        Users: {},
+        Purposes: {}
+        };  
+
         if (!currentStats.Users) currentStats.Users = {};
         if (!currentStats.Purposes) currentStats.Purposes = {};
 
-        const oldUserMin = currentStats.Users[loggedInUserEmail] || 0;
-        updates[`AquaSync/Stats_Summary/Users/${loggedInUserEmail}`] = oldUserMin + durationMinutes;
+        const oldUserMin =
+            currentStats.Users[loggedInUserEmail] || 0;
 
-        const safePurposeKey = myPurpose.split(' ')[0]; 
-        const oldPurposeMin = currentStats.Purposes[safePurposeKey] || 0;
-        updates[`AquaSync/Stats_Summary/Purposes/${safePurposeKey}`] = oldPurposeMin + durationMinutes;
-        updates[`AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`] = null;
+        updates[
+            `AquaSync/Stats_Summary/Users/${loggedInUserEmail}`
+        ] = oldUserMin + durationMinutes;
+
+        const oldPurposeMin =
+            currentStats.Purposes[submitWaterPurpose] || 0;
+
+        updates[
+            `AquaSync/Stats_Summary/Purposes/${submitWaterPurpose}`
+        ] = oldPurposeMin + durationMinutes;
+
+        updates["AquaSync/Log_Aktivitas/User_Terakhir"] =
+            loggedInUserEmail;
+
+        updates["AquaSync/Log_Aktivitas/Aktivitas_Terakhir"] =
+            submitWaterPurpose;
+
+        updates["AquaSync/Log_Aktivitas/Durasi_Asli_Menit"] =
+            durationMinutes;
+
+        updates["AquaSync/Log_Aktivitas/Timestamp_Mati"] =
+            now;
+
+        await update(ref(database), updates);
 
         usersArray.splice(userIndex, 1);
         purposesArray.splice(userIndex, 1);
+        
+        updates[
+        `AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`
+        ] = null;
     }
 
+    updates = {};
+
     if (usersArray.length > 0) {
-        let maxRemainingAllowed = 0;
+
+        let latestEndTime = 0;
+        let unlimitedUserExists = false;
 
         usersArray.forEach((remUser, remIndex) => {
-            const remPurpose = purposesArray[remIndex];
-            const remStartTime = rawFirebaseSnapshot[`Start_User_${remUser}`];
-            
-            if (remStartTime) {
-                let totalJatahMili = 40 * 60000; 
-                if (remPurpose === 'Mesin Cuci') { totalJatahMili = 120 * 60000; }
-                else if (remPurpose === 'Lain-lain / Siram Tanaman') { totalJatahMili = 0; }
 
-                if (totalJatahMili > 0) {
-                    const targetMatiUserItu = remStartTime + totalJatahMili;
-                    const sisaMiliUserItu = targetMatiUserItu - now;
-                    if (sisaMiliUserItu > maxRemainingAllowed) { maxRemainingAllowed = sisaMiliUserItu; }
-                } else {
-                    maxRemainingAllowed = -1;
-                }
+            const remPurpose = purposesArray[remIndex];
+
+            const remStartTime =
+                rawFirebaseSnapshot[`Start_User_${remUser}`];
+
+            if (!remStartTime) return;
+
+            if (remPurpose === 'Lain-lain / Siram Tanaman') {
+                unlimitedUserExists = true;
+                return;
+            }
+
+            let durationMs = 40 * 60000;
+
+            if (remPurpose === 'Mesin Cuci') {
+                durationMs = 120 * 60000;
+            }
+
+            const endTime =
+                remStartTime + durationMs;
+
+            if (endTime > latestEndTime) {
+                latestEndTime = endTime;
             }
         });
 
-        let newTimeoutTimestamp = 0;
-        if (maxRemainingAllowed === -1) { newTimeoutTimestamp = 0; }
-        else if (maxRemainingAllowed > 0) { newTimeoutTimestamp = now + maxRemainingAllowed; }
-        else { newTimeoutTimestamp = now + 60000; }
-
-        const finalUsers = usersArray.join(' + ');
-        const finalPurposes = purposesArray.join(' + ');
-        
         updates['AquaSync/Realtime_Status/Pump_Button'] = 1;
-        updates['AquaSync/Realtime_Status/Active_User'] = finalUsers;
-        updates['AquaSync/Realtime_Status/Water_Purpose'] = finalPurposes;
-        updates['AquaSync/Realtime_Status/Pump_Timeout'] = newTimeoutTimestamp;
+        updates['AquaSync/Realtime_Status/Active_User'] =
+            usersArray.join(' + ');
+        updates['AquaSync/Realtime_Status/Water_Purpose'] =
+            purposesArray.join(' + ');
 
-        update(ref(database), updates).then(() => { currentPumpState = 1; });
+        if (unlimitedUserExists) {
+            updates['AquaSync/Realtime_Status/Pump_Timeout'] = 0;
+        } else {
+            updates['AquaSync/Realtime_Status/Pump_Timeout'] =
+                latestEndTime;
+        }
 
-    } else {
-        // 💡 INTEGRASI HITUNG MUNDUR USER TERAKHIR MATIKAN POMPA
-        localLockBypass = true;
-        update(ref(database), { 'AquaSync/Control/Button_condition': false })
+        update(ref(database), updates)
             .then(() => {
-                startHandshakeMatiTimeout(); 
+                currentPumpState = 1;
+            })
+            .catch(err => {
+                console.error(err);
             });
     }
-}
+
+    // ==================================================
+    // USER TERAKHIR KELUAR
+    // ==================================================
+    else {
+
+        // Simpan statistik + hapus Start_User dulu
+        update(ref(database), updates)
+            .then(() => {
+
+                // Sama persis seperti Force Stop
+                localLockBypass = true;
+
+                return update(ref(database), {
+                    'AquaSync/Control/Button_condition': false
+                });
+
+            })
+            .then(() => {
+
+                startHandshakeMatiTimeout();
+
+            })
+            .catch(err => {
+                console.error(err);
+            });
+    }
+};
 
 window.submitWaterPurpose = function(purpose) {
     document.getElementById('purposeModal').style.display = 'none';
@@ -425,37 +517,22 @@ window.submitWaterPurpose = function(purpose) {
     updates[`AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`] = now;
 
     if (currentPumpState === 1 && globalPumpTimeout > now) {
-        if (!currentActiveUsers.includes(loggedInUserEmail)) { 
-            finalUsers = `${currentActiveUsers} + ${loggedInUserEmail}`; 
-        } else { 
-            finalUsers = currentActiveUsers; 
-        }
+        if (!currentActiveUsers.includes(loggedInUserEmail)) { finalUsers = `${currentActiveUsers} + ${loggedInUserEmail}`; }
+        else { finalUsers = currentActiveUsers; }
 
-        if (!currentWaterPurposes.includes(purpose)) { 
-            finalPurposes = `${currentWaterPurposes} + ${purpose}`; 
-        } else { 
-            finalPurposes = currentWaterPurposes; 
-        }
+        if (!currentWaterPurposes.includes(purpose)) { finalPurposes = `${currentWaterPurposes} + ${purpose}`; }
+        else { finalPurposes = currentWaterPurposes; }
 
         const remainingTimeMinutes = Math.floor((globalPumpTimeout - now) / 60000);
-        if (durationMinutes > remainingTimeMinutes) { 
-            newTimeoutTimestamp = now + (durationMinutes * 60000); 
-        } else { 
-            newTimeoutTimestamp = globalPumpTimeout; 
-        }
+        if (durationMinutes > remainingTimeMinutes) { newTimeoutTimestamp = now + (durationMinutes * 60000); }
+        else { newTimeoutTimestamp = globalPumpTimeout; }
 
         updates['AquaSync/Realtime_Status/Pump_Button'] = 1;
         updates['AquaSync/Realtime_Status/Active_User'] = finalUsers;
         updates['AquaSync/Realtime_Status/Water_Purpose'] = finalPurposes;
         updates['AquaSync/Realtime_Status/Pump_Timeout'] = newTimeoutTimestamp;
 
-        update(ref(database), updates).then(() => { 
-            currentPumpState = 1; 
-            currentWaterPurposes = finalPurposes; 
-            currentActiveUsers = finalUsers;
-            globalPumpTimeout = newTimeoutTimestamp;
-            startActivityCountdown(); 
-        });
+        update(ref(database), updates).then(() => { currentPumpState = 1; });
 
     } else {
         newTimeoutTimestamp = durationMinutes > 0 ? now + (durationMinutes * 60000) : 0;
@@ -487,22 +564,6 @@ window.triggerForceStop = function() {
             .then(() => {
                 startHandshakeMatiTimeout(); 
             });
-    }
-}
-
-function suntikVisualDinamis(elementTarget, uriGambar, emojiSerep) {
-    if (!elementTarget) return;
-    const adaGambarSekarang = elementTarget.querySelector('img');
-    const tulisanSekarang = elementTarget.innerText;
-
-    if (uriGambar && uriGambar !== "") {
-        if (!adaGambarSekarang || adaGambarSekarang.getAttribute('src') !== uriGambar) {
-            elementTarget.innerHTML = `<img src="${uriGambar}" alt="Status Animasi" style="max-width: 55px; max-height: 55px; object-fit: contain; display: inline-block; vertical-align: middle;">`;
-        }
-    } else {
-        if (elementTarget.querySelector('img') || tulisanSekarang !== emojiSerep) {
-            elementTarget.innerHTML = emojiSerep;
-        }
     }
 }
 
@@ -556,7 +617,6 @@ function startHandshakeTimeout() {
     }, 1000);
 }
 
-// 🔥 FUNGSI TIMEOUT MEMATIKAN (BERSIH & MATIKAN TIMER LAMA BIAR GAK TABRAKAN)
 function startHandshakeMatiTimeout() {
     clearInterval(handshakeInterval);
     clearInterval(activityTimerInterval); 
@@ -566,8 +626,6 @@ function startHandshakeMatiTimeout() {
     updatePumpUI(1, "01:00"); 
     const bigStatus = document.getElementById('bigPumpStatus');
     if (bigStatus) { bigStatus.innerText = "VERIFIKASI MATI..."; bigStatus.style.color = "#fdcb6e"; }
-    const pumpVisual = document.getElementById('pumpVisual');
-    if (pumpVisual) pumpVisual.innerHTML = "⏳";
 
     handshakeInterval = setInterval(() => {
         timeLeft--;

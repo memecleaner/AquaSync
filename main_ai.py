@@ -1,129 +1,113 @@
-# import pyrebase
-# import pandas as pd
-# import os
-# import time
-# from datetime import datetime
+import pyrebase
+import pandas as pd
+import os
+import time
+from datetime import datetime
 
-# # 1. KONFIGURASI FIREBASE CLOUD (Wajib sinkron dengan JavaScript)
-# config = {
-#     "apiKey": "AIzaSyC9PuXQiQ2zCKfCMG3KTYoiU_kldIZmNxE",
-#     "authDomain": "aquasync-dda8c.firebaseapp.com",
-#     "databaseURL": "https://aquasync-dda8c-default-rtdb.asia-southeast1.firebasedatabase.app",
-#     "projectId": "aquasync-dda8c",
-#     "storageBucket": "aquasync-dda8c.firebasestorage.app",
-#     "messagingSenderId": "332004178563"
-# }
+# 1. KONFIGURASI FIREBASE CLOUD
+config = {
+    "apiKey": "AIzaSyC9PuXQiQ2zCKfCMG3KTYoiU_kldIZmNxE",
+    "authDomain": "aquasync-dda8c.firebaseapp.com",
+    "databaseURL": "https://aquasync-dda8c-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "projectId": "aquasync-dda8c",
+    "storageBucket": "aquasync-dda8c.firebasestorage.app",
+    "messagingSenderId": "332004178563"
+}
 
-# firebase = pyrebase.initialize_app(config)
-# db = firebase.database()
+firebase = pyrebase.initialize_app(config)
+db = firebase.database()
 
-# FILE_DATASET = "dataset_usage.csv"
-# TARIF_PER_KWH = 1444.70 # Tarif Resmi PLN
-# DAYA_POMPA_WATT = 250   # Spesifikasi daya pompa Shimizu
+FILE_DATASET = "dataset_usage.csv"
+TARIF_PER_KWH = 1444.70
 
-# def inisialisasi_dataset():
-#     if not os.path.exists(FILE_DATASET):
-#         df = pd.DataFrame(columns=["Timestamp", "User", "Aktivitas", "Durasi_Menit", "Estimasi_kWh", "Biaya_Rupiah"])
-#         df.to_csv(FILE_DATASET, index=False)
-#         print(f"[INFO] File {FILE_DATASET} berhasil diinisialisasi.")
+def inisialisasi_dataset():
+    if not os.path.exists(FILE_DATASET):
+        df = pd.DataFrame(columns=["Timestamp", "Tanggal", "Total_kWh", "Total_Rupiah"])
+        df.to_csv(FILE_DATASET, index=False)
 
-# # =================================================================
-# # INTI LOGIKA UTAMA: MACHINE LEARNING POLA PERILAKU PENGGUNA
-# # =================================================================
-# def pelajari_pola_dan_prediksi_total():
-#     try:
-#         df = pd.read_csv(FILE_DATASET)
-        
-#         # Pengaman: Jika data log transaksi awal masih di bawah 3 baris, pasang baseline minimal dulu
-#         if len(df) < 3:
-#             db.child("AquaSync").child("Prediction").update({"Monthly_Bill": 45000})
-#             return
+# =================================================================
+# FITUR 1: LOGGING REALTIME HARI (1-7) KETIKA ADA PEMAKAIAN
+# =================================================================
+def update_actual_usage(current_kwh):
+    try:
+        hari_ke = datetime.now().isoweekday() # 1 = Senin, 7 = Minggu
+        hitung_rupiah_hari_ini = int(current_kwh * TARIF_PER_KWH)
 
-#         # Ambil rentang waktu total data yang sudah terkumpul dalam satuan hari
-#         df['Waktu_Riil'] = pd.to_datetime(df['Timestamp'], unit='s')
-#         total_hari_eksperimen = max(1, (df['Waktu_Riil'].max() - df['Waktu_Riil'].min()).days + 1)
+        # Setiap kali alat nyala dan kWh berubah, ini langsung nembak ke Firebase!
+        db.child("AquaSync").child("actual_usage").update({f"day_{hari_ke}": hitung_rupiah_hari_ini})
+        print(f"[LOG] Actual Usage Day {hari_ke} terupdate: Rp {hitung_rupiah_hari_ini}")
+    except Exception as e:
+        print(f"[ERROR LOG ACTUAL]: {e}")
 
-#         # 1. PROFILE LEARNING STAGE: Python mengelompokkan data per USER dan AKTIVITAS
-#         # Menghitung total durasi menit pemakaian air dan frekuensi klik dari masing-masing kombinasi
-#         pola_group = df.groupby(['User', 'Aktivitas']).agg(
-#             Total_Menit=('Durasi_Menit', 'sum'),
-#             Total_Klik=('Durasi_Menit', 'count')
-#         ).reset_index()
+# =================================================================
+# FITUR 2: AI MACHINE LEARNING SENSITIF LONJAKAN (ADAPTIVE WEIGHTING)
+# =================================================================
+def pelajari_pola_dan_prediksi_total(current_kwh=0):
+    try:
+        df = pd.read_csv(FILE_DATASET) if os.path.exists(FILE_DATASET) else pd.DataFrame()
+        hitung_rupiah_hari_ini = int(current_kwh * TARIF_PER_KWH)
 
-#         total_estimasi_sebulan_rupiah = 0
+        if len(df) >= 2:
+            rata_rata_historis = df['Total_Rupiah'].mean()
+            biaya_terakhir = hitung_rupiah_hari_ini if hitung_rupiah_hari_ini > 0 else df['Total_Rupiah'].iloc[-1]
 
-#         # 2. PROYEKSI BOBOT STAGE: Hitung proyeksi tagihan 30 hari berdasarkan rutinitas
-#         for index, row in pola_group.iterrows():
-#             # Hitung rata-rata durasi asli per satu kali aktivitas (misal: Audrey sekali mandi ternyata rata-rata 15 menit)
-#             rata_durasi_per_klik = row['Total_Menit'] / row['Total_Klik']
-            
-#             # Hitung frekuensi kemunculan aktivitas tersebut per hari selama masa eksperimen alat IoT
-#             frekuensi_per_hari = row['Total_Klik'] / total_hari_eksperimen
-            
-#             # Proyeksikan berapa kali aktivitas ini akan terjadi dalam waktu 1 bulan penuh (30 hari)
-#             estimasi_klik_sebulan = frekuensi_per_hari * 30
-            
-#             # Total estimasi menit yang dihabiskan oleh kombinasi ini selama sebulan kedepan
-#             proyeksi_menit_sebulan = estimasi_klik_sebulan * rata_durasi_per_klik
-            
-#             # Konversi menit ke satuan kWh listrik dan dikalikan tarif PLN rupiah
-#             proyeksi_kwh = (DAYA_POMPA_WATT * (proyeksi_menit_sebulan / 60)) / 1000
-#             proyeksi_rupiah = proyeksi_kwh * TARIF_PER_KWH
-            
-#             # Akumulasikan seluruh bobot user ke dalam keranjang total pengeluaran
-#             total_estimasi_sebulan_rupiah += proyeksi_rupiah
+            # 🔥 LOGIKA SENSITIF LONJAKAN: Jika biaya melonjak lebih dari 1.5x rata-rata
+            if biaya_terakhir > (1.5 * rata_rata_historis):
+                # AI langsung membuang pola lama dan fokus 80% pada lonjakan terbaru
+                prediksi_mingguan = (0.2 * rata_rata_historis) + (0.8 * biaya_terakhir)
+            else:
+                # Pola normal
+                prediksi_mingguan = (0.7 * rata_rata_historis) + (0.3 * biaya_terakhir)
+        else:
+            prediksi_mingguan = hitung_rupiah_hari_ini * 1.2 if hitung_rupiah_hari_ini > 0 else 15000
 
-#         # Batasi batas pengaman pengeluaran terendah (misal abonemen minimal Rp 15.000)
-#         final_prediction = max(15000, int(total_estimasi_sebulan_rupiah))
+        final_prediction = max(3000, int(prediksi_mingguan))
+        db.child("AquaSync").child("Prediction").update({"Monthly_Bill": final_prediction})
+        print(f"[AI PREDICTION] Prediksi beradaptasi: Rp {final_prediction}")
 
-#         # 3. OVERWRITE STAGE: Kirim hasil ramalan berbasis pola user ini ke Firebase cloud
-#         db.child("AquaSync").child("Prediction").update({"Monthly_Bill": final_prediction})
-#         print(f"[AI MODEL UPDATED] Sukses mempelajari pola user. Prediksi Baru: Rp {final_prediction} (Akurasi Adaptif)")
+    except Exception as e:
+        print(f"[AI ERROR]: {e}")
 
-#     except Exception as e:
-#         print(f"[AI ERROR] Gagal mengekstrak pola perilaku user: {e}")
+def sinkronisasi_dan_tarik_arsip():
+    try:
+        history_snapshot = db.child("AquaSync").child("History_Mingguan").get()
+        if history_snapshot.val() is not None:
+            rows = []
+            for minggu in history_snapshot.each():
+                val = minggu.val()
+                if isinstance(val, dict):
+                    rows.append({
+                        "Timestamp": val.get("Timestamp", time.time()),
+                        "Tanggal": val.get("Tanggal_Backup", "-"),
+                        "Total_kWh": val.get("Total_Energy", 0),
+                        "Total_Rupiah": val.get("Total_Bill", 0)
+                    })
+            if len(rows) > 0:
+                pd.DataFrame(rows).to_csv(FILE_DATASET, index=False)
+                pelajari_pola_dan_prediksi_total()
+    except Exception as e:
+        print(f"[SYNC ERROR]: {e}")
 
-# def stream_handler(message):
-#     if message["event"] in ["put", "patch"]:
-#         path = message["path"]
-#         data = message["data"]
-        
-#         if path == "/" and data is not None:
-#             try:
-#                 user = data.get("User_Terakhir", "-")
-#                 aktivitas = data.get("Aktivitas_Terakhir", "-")
-#                 durasi = data.get("Durasi_Asli_Menit", 0)
+def stream_handler(message):
+    path = message["path"]
+    data = message["data"]
 
-#                 if user != "-" and durasi > 0:
-#                     print(f"\n[EVENT LOG DETECTED] {user} check-out {aktivitas} -> Durasi asli: {durasi} Menit.")
-                    
-#                     estimasi_kwh = round((DAYA_POMPA_WATT * (durasi / 60)) / 1000, 4)
-#                     biaya_riil = round(estimasi_kwh * TARIF_PER_KWH, 2)
+    # 💡 Pemicu 1: Update Realtime & AI saat alat mengirim data Energy
+    if "Energy" in path or (isinstance(data, dict) and "Energy" in data):
+        energi_saat_ini = data if "Energy" in path else data.get("Energy", 0)
+        update_actual_usage(energi_saat_ini)
+        pelajari_pola_dan_prediksi_total(energi_saat_ini)
 
-#                     new_row = {
-#                         "Timestamp": time.time(),
-#                         "User": user,
-#                         "Aktivitas": aktivitas,
-#                         "Durasi_Menit": durasi,
-#                         "Estimasi_kWh": estimasi_kwh,
-#                         "Biaya_Rupiah": biaya_riil
-#                     }
-                    
-#                     df = pd.read_csv(FILE_DATASET)
-#                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-#                     df.to_csv(FILE_DATASET, index=False)
-#                     print(f"[DATA ARCS] Log berhasil dikunci permanen ke {FILE_DATASET}")
+    # 💡 Pemicu 2: Sinkronisasi arsip mingguan
+    if path == "/" or "History_Mingguan" in path:
+        sinkronisasi_dan_tarik_arsip()
 
-#                     # Panggil mesin kalkulator AI pola untuk memproses ulang data CSV ter-update
-#                     pelajari_pola_dan_prediksi_total()
+if __name__ == "__main__":
+    inisialisasi_dataset()
+    sinkronisasi_dan_tarik_arsip()
+    print("\n[AI SERVER] AquaSync Adaptive AI Running...")
 
-#             except Exception as e:
-#                 print(f"[STREAM ERROR] Gagal menyedot data: {e}")
-
-# if __name__ == "__main__":
-#     inisialisasi_dataset()
-#     print("[RUNNING SERVER AI] Agen AquaSync Behavioral AI sedang mengawasi Firebase... (Ctrl+C untuk stop)")
-#     my_stream = db.child("AquaSync").child("Log_Aktivitas").stream(stream_handler)
-    
-#     while True:
-#         time.sleep(1)
+    # Dengarkan seluruh perubahan di AquaSync agar lebih responsif
+    my_stream = db.child("AquaSync").stream(stream_handler)
+    while True:
+        time.sleep(1)
