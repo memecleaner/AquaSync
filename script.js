@@ -428,26 +428,36 @@ window.checkoutUserSession = async function() {
     }
 };
 
-window.submitWaterPurpose = function(purpose, customDuration = 0) {
+window.submitWaterPurpose = async function(purpose, customDuration = 0) { // Tambahkan 'async' di depan function
     document.getElementById('purposeModal').style.display = 'none';
 
     let durationMinutes = 0;
     if (purpose === 'Mesin Cuci') { 
-        durationMinutes = customDuration > 0 ? customDuration : 120; // Menggunakan durasi pilihan user!
+        durationMinutes = customDuration > 0 ? customDuration : 120; 
     } 
     else if (purpose === 'Cuci Piring') { 
-    durationMinutes = 25; 
+        durationMinutes = 25; 
     }
     // ==========================================================
-    // LOGIKA DINAMIS AI: AMBIL HASIL HITUNGAN PYTHON DI FIREBASE
+    // AMBIL DATA LIVE LANGSUNG DARI PATH USERS_AI (FIX SINKRONISASI AI)
     // ==========================================================
     else if (purpose === 'Mandi & Buang Air') { 
-        // Mengambil profil AI milik user yang sedang login saat ini
-        const dataUserAI = rawFirebaseSnapshot.Users_AI && rawFirebaseSnapshot.Users_AI[loggedInUserEmail];
-        
-        // Jika Python sudah pernah menghitung, pakai angka 'batas_timer_ai'. Jika belum, pakai default 40.
-        durationMinutes = (dataUserAI && dataUserAI.batas_timer_ai) ? dataUserAI.batas_timer_ai : 40;
-        console.log(`[ADAPTIVE AI] Durasi mandi untuk ${loggedInUserEmail} disesuaikan menjadi: ${durationMinutes} menit`);
+        try {
+            // Kita panggil manual ke path database luar agar tidak terikat snapshot Realtime_Status
+            const { get, child } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
+            const snapshotAI = await get(child(ref(database), `AquaSync/Users_AI/${loggedInUserEmail}`));
+            
+            if (snapshotAI.exists() && snapshotAI.val().batas_timer_ai) {
+                durationMinutes = snapshotAI.val().batas_timer_ai;
+                console.log(`[ADAPTIVE AI SUCCESS] Menggunakan batas rekomendasi AI: ${durationMinutes} menit`);
+            } else {
+                durationMinutes = 40; // Default jika user baru/belum ada data
+                console.log(`[ADAPTIVE AI COLD-START] Belum ada data kalkulasi AI, menggunakan default: 40 menit`);
+            }
+        } catch (err) {
+            durationMinutes = 40; // Default jika koneksi gagal
+            console.error("Gagal mengambil parameter AI, fallback ke default:", err);
+        }
     }
 
     const now = Date.now();
