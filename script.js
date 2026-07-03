@@ -435,7 +435,20 @@ window.submitWaterPurpose = function(purpose, customDuration = 0) {
     if (purpose === 'Mesin Cuci') { 
         durationMinutes = customDuration > 0 ? customDuration : 120; // Menggunakan durasi pilihan user!
     } 
-    else if (purpose === 'Mandi & Buang Air' || purpose === 'Cuci Piring') { durationMinutes = 40; } 
+    else if (purpose === 'Cuci Piring') { 
+    durationMinutes = 25; 
+    }
+    // ==========================================================
+    // LOGIKA DINAMIS AI: AMBIL HASIL HITUNGAN PYTHON DI FIREBASE
+    // ==========================================================
+    else if (purpose === 'Mandi & Buang Air') { 
+        // Mengambil profil AI milik user yang sedang login saat ini
+        const dataUserAI = rawFirebaseSnapshot.Users_AI && rawFirebaseSnapshot.Users_AI[loggedInUserEmail];
+        
+        // Jika Python sudah pernah menghitung, pakai angka 'batas_timer_ai'. Jika belum, pakai default 40.
+        durationMinutes = (dataUserAI && dataUserAI.batas_timer_ai) ? dataUserAI.batas_timer_ai : 40;
+        console.log(`[ADAPTIVE AI] Durasi mandi untuk ${loggedInUserEmail} disesuaikan menjadi: ${durationMinutes} menit`);
+    }
 
     const now = Date.now();
     let newTimeoutTimestamp = 0;
