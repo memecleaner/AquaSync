@@ -246,15 +246,28 @@
     <div id="purposeModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
         <div style="background: #ffffff; padding: 25px; border-radius: 20px; width: 85%; max-width: 400px; box-shadow: 0 15px 30px rgba(0,0,0,0.1); text-align: center;">
             <h3 id="modalTitle" style="margin-top: 0; font-size: 18px; color: #2d3436;">Keperluan Penggunaan Air:</h3>
-            <p id="modalDesc" style="font-size: 12px; color: #7f8c8d; margin-bottom: 20px;">Silakan pilih aktivitas Anda untuk validasi data otomatis skripsi.</p>
+            <p id="modalDesc" style="font-size: 12px; color: #7f8c8d; margin-bottom: 20px;">Silakan pilih aktivitas dalam menggunakan air:</p>
             
-            <div style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- MAIN MENU UTAMA -->
+            <div id="mainPurposeMenu" style="display: flex; flex-direction: column; gap: 10px;">
                 <button onclick="submitWaterPurpose('Mandi & Buang Air')" style="padding: 12px; border-radius: 12px; border: none; background: #0984e3; color: white; font-weight: bold; cursor: pointer;">🛁 Mandi & Buang Air</button>
-                <button onclick="submitWaterPurpose('Mesin Cuci')" style="padding: 12px; border-radius: 12px; border: none; background: #00b894; color: white; font-weight: bold; cursor: pointer;">🧺 Mesin Cuci</button>
+                <button onclick="bukaSubMenuMesinCuci('Mesin Cuci')" style="padding: 12px; border-radius: 12px; border: none; background: #00b894; color: white; font-weight: bold; cursor: pointer;">🧺 Mesin Cuci</button>
                 <button onclick="submitWaterPurpose('Cuci Piring')" style="padding: 12px; border-radius: 12px; border: none; background: #fdcb6e; color: #2d3436; font-weight: bold; cursor: pointer;">🍽️ Cuci Piring</button>
                 <button onclick="submitWaterPurpose('Lain-lain / Siram Tanaman')" style="padding: 12px; border-radius: 12px; border: none; background: #6c5ce7; color: white; font-weight: bold; cursor: pointer;">🌱 Lain-lain (Siram Tanaman)</button>
-                <button onclick="closeModal()" style="padding: 10px; border-radius: 12px; border: 1px solid #ff7675; background: transparent; color: #ff7675; margin-top: 10px; cursor: pointer;">Batal</button>
             </div>
+
+            <!-- SUBMENU TIME CUSTOM (AWALNYA TERSEMBUNYI SEMPURNA) -->
+            <div id="subCpuMenu" style="display: none; flex-direction: column; gap: 10px; padding: 15px; background: #f1f2f6; border-radius: 12px; margin-top: 10px; align-items: center;">
+                <label style="font-weight: 600; font-size: 13px; color: #2d3436;">Tentukan Durasi Mencuci (Menit):</label>
+                <div style="display: flex; gap: 5px; align-items: center; margin-bottom: 5px; justify-content: center;">
+                    <input type="number" id="customMesinCuciTime" value="60" min="15" max="180" style="width: 70px; padding: 8px; text-align: center; border-radius: 8px; border: 1px solid #ccc; font-weight: bold;">
+                    <span style="font-size: 13px; font-weight: 600;">Menit</span>
+                </div>
+                <button onclick="submitMesinCuciFix()" style="width: 100%; padding: 10px; background: #36c2b5; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">MULAI SEKARANG</button>
+            </div>
+
+            <!-- SATU TOMBOL KONTROL BATAL GLOBAL -->
+            <button onclick="closeModal()" style="width: 100%; padding: 10px; border-radius: 12px; border: 1px solid #ff7675; background: transparent; color: #ff7675; margin-top: 15px; cursor: pointer; font-weight: bold;">Batal</button>           
         </div>
     </div>
 

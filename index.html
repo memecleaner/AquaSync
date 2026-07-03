@@ -142,44 +142,12 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-
-        const firebaseConfig = {
-          apiKey: "AIzaSyC9PuXQiQ2zCKfCMG3KTYoiU_kldIZmNxE",
-          authDomain: "aquasync-dda8c.firebaseapp.com",
-          databaseURL: "https://aquasync-dda8c-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "aquasync-dda8c",
-          storageBucket: "aquasync-dda8c.firebasestorage.app",
-          messagingSenderId: "332004178563",
-          appId: "1:332004178563:web:d34bb11e834b4832a579b6"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-
-        document.getElementById('loginBtn').addEventListener('click', (e) => {
-            e.preventDefault(); // Mengunci browser dari aksi interupsi refresh halaman
-
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const errorTxt = document.getElementById('errorTxt');
-
-            errorTxt.style.display = 'none';
-
-            signInWithEmailAndPassword(auth, email, password)
-            .then((userCredential) => {
-                console.log("Login sukses! Mengalihkan halaman...");
-                // JIKA SUKSES: Langsung dilempar masuk ke dashboard utama Anda
-                window.location.href = "dashboard.html"; 
-            })
-            .catch((error) => {
-                console.error(error);
-                errorTxt.innerText = "Gagal Masuk: " + error.message.replace("Firebase: ", "");
-                errorTxt.style.display = 'block';
-            });
-        });
-    </script>
+    <!-- Di bagian bawah file index.html sebelum tutup tag </body> -->
+<script type="module">
+    import { inisialisasiLogin } from "./js/auth.js";
+    
+    // Langsung jalankan fungsi login yang sudah kita rapikan di file terpisah
+    inisialisasiLogin();
+</script>
 </body>
 </html>

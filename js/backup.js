@@ -27,16 +27,16 @@ let activityTimerInterval = null;
 let isVibrationValidated = false; 
 let globalPumpTimeout = 0; 
 let localLockBypass = false; 
-let statsSummaryCache = { Users: {}, Purposes: {} };
-
-// Variabel Global untuk AI Kontrol Perilaku
-let pemicuNotifTerpanggil = false;
-let intervalPengawasAI = null;
+let statsSummaryCache = {
+    Users: {},
+    Purposes: {}
+};
 
 const rupiahFormatter = new Intl.NumberFormat('id-ID', {
     style: 'currency', currency: 'IDR', maximumFractionDigits: 0
 });
 
+// Daftar nama bulan Indonesia untuk penamaan otomatis periode E-Statement
 const namaBulanIndo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktobet", "November", "Desember"];
 
 onAuthStateChanged(auth, (user) => {
@@ -55,9 +55,13 @@ const historyRef = ref(database, 'AquaSync/History_Mingguan');
 const statsRef = ref(database, 'AquaSync/Stats_Summary');
 
 onValue(statsRef, (snapshot) => {
-    statsSummaryCache = snapshot.val() || { Users: {}, Purposes: {} };
-});
 
+    statsSummaryCache = snapshot.val() || {
+        Users: {},
+        Purposes: {}
+    };
+
+});
 // =================================================================
 // A. MENDENGAR DATABASE REALTIME CLOUD + EKSEKUSI MONITORING TOREN
 // =================================================================
@@ -110,11 +114,9 @@ onValue(realtimeRef, (snapshot) => {
 
         const bigStatus = document.getElementById('bigPumpStatus');
         const bigDetail = document.getElementById('bigPumpDetail');
+        const pumpVisual = document.getElementById('pumpVisual');
         const forceStopBtn = document.getElementById('forceStopBtn');
 
-        // =================================================================
-        // KUNCI UI KETAT: RE-ORGANISASI STATUS POMPA (ANTI-DESINKRONISASI)
-        // =================================================================
         if (data.Pump_Button === 1) {
             if (forceStopBtn) forceStopBtn.style.display = 'block'; 
 
@@ -146,22 +148,17 @@ onValue(realtimeRef, (snapshot) => {
                 });
                 if (bigDetail) bigDetail.innerHTML = htmlContent;
             } else {
-                if (bigStatus && bigStatus.innerText !== "VERIFIKASI MATI...") {
+                if (bigStatus) {
                     bigStatus.innerText = "MEMVERIFIKASI...";
                     bigStatus.style.color = "#fdcb6e"; 
-                    if (bigDetail) bigDetail.innerHTML = `<div>Menunggu respons balik mekanis dari sensor getaran...</div>`;
                 }
+                if (bigDetail) bigDetail.innerHTML = `<div>Menunggu respons balik mekanis dari sensor getaran...</div>`;
             }
-        } 
-        else {
+        } else {
             isVibrationValidated = false;
-            localLockBypass = false; 
-            
             if (forceStopBtn) forceStopBtn.style.display = 'none'; 
-            
             clearInterval(handshakeInterval);
             clearInterval(activityTimerInterval);
-            clearInterval(intervalPengawasAI);
             
             if (bigStatus) {
                 bigStatus.innerText = "POMPA NON-AKTIF";
@@ -176,10 +173,10 @@ onValue(realtimeRef, (snapshot) => {
                 btn.classList.add('on'); 
                 btn.innerText = 'JOIN'; 
             }
-        } else if (data.Pump_Button === 0) {
+        } else if (!isVibrationValidated && data.Pump_Button === 0) {
             updatePumpUI(0);
         }
-    } // <--- FIX: Di sinilah letak kurung tutup pasangannya yang benar!
+    }
 });
 
 // =================================================================
@@ -189,8 +186,9 @@ onValue(predictionRef, (snapshot) => {
     const data = snapshot.val();
     if (data && data.Monthly_Bill) {
         const prediksiMingguIni = data.Monthly_Bill;
-        const prediksiBulanIni = prediksiMingguIni * 4; 
+        const prediksiBulanIni = prediksiMingguIni * 4; // Logika Ekstrapolasi Jembatan Waktu
 
+        // Cetak masing-masing ke elemen display target
         const predMingguElem = document.getElementById('valPrediction');
         if (predMingguElem) { predMingguElem.innerText = rupiahFormatter.format(prediksiMingguIni); }
 
@@ -211,7 +209,7 @@ onValue(predictionRef, (snapshot) => {
                 notifElemen.style.background = "#ff7675"; 
             } else {
                 notifElemen.style.display = 'block';
-                notifElemen.innerHTML = "ℹ️ Info: Hari terakhir sikuan mingguan. E-Statement otomatis diproses nanti malam.";
+                notifElemen.innerHTML = "ℹ️ Info: Hari terakhir siklus mingguan. E-Statement otomatis diproses nanti malam.";
                 notifElemen.style.background = "rgba(255,255,255,0.2)";
             }
 
@@ -224,6 +222,7 @@ onValue(predictionRef, (snapshot) => {
                     const seninLalu = new Date(sekarang);
                     seninLalu.setDate(sekarang.getDate() - 6);
                     
+                    // 💡 FIX PERIODE BULAN: Mengambil nama bulan dinamis agar tidak stuck di kata "Juni"
                     const namaBulanSenin = namaBulanIndo[seninLalu.getMonth()];
                     const namaBulanMinggu = namaBulanIndo[sekarang.getMonth()];
                     
@@ -249,7 +248,7 @@ onValue(predictionRef, (snapshot) => {
                 }
             }
         } else {
-            notifElemen.style.display = 'none'; 
+            notifElemen.style.none = 'none';
         }
     }
 });
@@ -269,6 +268,7 @@ onValue(historyRef, (snapshot) => {
             listArray.push(mingguIni);
         }
 
+        // Urutkan array berdasarkan Timestamp terbesar (Terbaru ditaruh paling atas)
         listArray.sort((a, b) => b.Timestamp - a.Timestamp);
 
         let htmlTableContent = "";
@@ -285,12 +285,18 @@ onValue(historyRef, (snapshot) => {
         });
 
         const totalEStatementElem = document.getElementById('valEStatementTotal');
-        if (totalEStatementElem) { totalEStatementElem.innerText = rupiahFormatter.format(totalTagihanKumulatif); }
+        if (totalEStatementElem) {
+            totalEStatementElem.innerText = rupiahFormatter.format(totalTagihanKumulatif);
+        }
 
         const tableBodyElem = document.getElementById('tableEStatementBody');
-        if (tableBodyElem) { tableBodyElem.innerHTML = htmlTableContent; }
+        if (tableBodyElem) {
+            tableBodyElem.innerHTML = htmlTableContent;
+        }
     } else {
-        if (document.getElementById('valEStatementTotal')) { document.getElementById('valEStatementTotal').innerText = "Rp 0"; }
+        if (document.getElementById('valEStatementTotal')) {
+            document.getElementById('valEStatementTotal').innerText = "Rp 0";
+        }
     }
 });
 
@@ -325,116 +331,198 @@ window.openJoinMenuInstead = function() {
 }
 
 window.checkoutUserSession = async function() {
+
     document.getElementById('sessionModal').style.display = 'none';
 
     const usersArray = currentActiveUsers.split(' + ');
     const purposesArray = currentWaterPurposes.split(' + ');
+
     const userIndex = usersArray.indexOf(loggedInUserEmail);
 
     let submitWaterPurpose = "Keperluan Umum";
     const now = Date.now();
+
     let updates = {};
 
     if (userIndex !== -1) {
+
         submitWaterPurpose = purposesArray[userIndex];
-        const firebaseStartTime = rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`];
+
+        const firebaseStartTime =
+            rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`];
+
+        console.log("USER LOGIN :", loggedInUserEmail);
+        console.log("START TIME :", firebaseStartTime);
+        console.log("NOW :", now);
 
         let durationMinutes = 1;
+
         if (firebaseStartTime) {
+
             const diffMs = now - firebaseStartTime;
+
+            console.log("SELISIH MS :", diffMs);
+
             durationMinutes = Math.ceil(diffMs / 60000);
-            if (durationMinutes < 1) durationMinutes = 1;
+
+            if (durationMinutes < 1) {
+                durationMinutes = 1;
+            }
         }
 
         console.log("DURASI FINAL :", durationMinutes);
 
-        // SUNTIKAN LOGIKA AI SINKRON
-        let durasiUntukAI = durationMinutes;
-        const batasKritisMax = (rawFirebaseSnapshot.Pump_Timeout - rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`]) / 60000;
-        if (durationMinutes >= (batasKritisMax - 1)) {
-            durasiUntukAI = Math.max(1, durationMinutes - 10); 
-            console.log("[AI SECURITY] Durasi disaring dari anomali lupa matiin menjadi:", durasiUntukAI);
-        }
+// =========================================================
+// SUNTIKAN LOGIKA AI: KIRIM DURASI UNTUK ADAPTIVE SMOOTHING
+// =========================================================
+let durasiUntukAI = durationMinutes;
 
-        updates[`AquaSync/Users_AI/${loggedInUserEmail}/durasi_aktual_terakhir`] = durasiUntukAI;
+// Cek apakah sesi ini mati karena diperingatkan kelalaian (Force Shutdown)
+// Jika durasi menyentuh atau melebihi threshold, kita potong 10 menit agar rumus AI di Python tidak rusak
+const batasKritisMax = (rawFirebaseSnapshot.Pump_Timeout - rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`]) / 60000;
+if (durationMinutes >= (batasKritisMax - 1)) {
+    durasiUntukAI = Math.max(1, durationMinutes - 10); // Saring anomali kelalaian lupa matiin
+    console.log("[AI SECURITY] Durasi disaring dari anomali lupa matiin menjadi:", durasiUntukAI);
+}
 
-        const currentStats = statsSummaryCache || { Users: {}, Purposes: {} };  
+// Tembak langsung ke node database khusus agar dibaca oleh Script PythonAnywhere kamu!
+updates[`AquaSync/Users_AI/${loggedInUserEmail}/durasi_aktual_terakhir`] = durasiUntukAI;
+// =========================================================
+
+        const currentStats = statsSummaryCache || {
+        Users: {},
+        Purposes: {}
+        };  
+
         if (!currentStats.Users) currentStats.Users = {};
         if (!currentStats.Purposes) currentStats.Purposes = {};
 
-        const oldUserMin = currentStats.Users[loggedInUserEmail] || 0;
-        updates[`AquaSync/Stats_Summary/Users/${loggedInUserEmail}`] = oldUserMin + durationMinutes;
+        const oldUserMin =
+            currentStats.Users[loggedInUserEmail] || 0;
 
-        const oldPurposeMin = currentStats.Purposes[submitWaterPurpose] || 0;
-        updates[`AquaSync/Stats_Summary/Purposes/${submitWaterPurpose}`] = oldPurposeMin + durationMinutes;
+        updates[
+            `AquaSync/Stats_Summary/Users/${loggedInUserEmail}`
+        ] = oldUserMin + durationMinutes;
 
-        updates["AquaSync/Log_Aktivitas/User_Terakhir"] = loggedInUserEmail;
-        updates["AquaSync/Log_Aktivitas/Aktivitas_Terakhir"] = submitWaterPurpose;
-        updates["AquaSync/Log_Aktivitas/Durasi_Asli_Menit"] = durationMinutes;
-        updates["AquaSync/Log_Aktivitas/Timestamp_Mati"] = now;
+        const oldPurposeMin =
+            currentStats.Purposes[submitWaterPurpose] || 0;
+
+        updates[
+            `AquaSync/Stats_Summary/Purposes/${submitWaterPurpose}`
+        ] = oldPurposeMin + durationMinutes;
+
+        updates["AquaSync/Log_Aktivitas/User_Terakhir"] =
+            loggedInUserEmail;
+
+        updates["AquaSync/Log_Aktivitas/Aktivitas_Terakhir"] =
+            submitWaterPurpose;
+
+        updates["AquaSync/Log_Aktivitas/Durasi_Asli_Menit"] =
+            durationMinutes;
+
+        updates["AquaSync/Log_Aktivitas/Timestamp_Mati"] =
+            now;
 
         await update(ref(database), updates);
 
         usersArray.splice(userIndex, 1);
         purposesArray.splice(userIndex, 1);
         
-        updates = {};
-        updates[`AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`] = null;
-        await update(ref(database), updates);
+        updates[
+        `AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`
+        ] = null;
     }
 
     updates = {};
 
     if (usersArray.length > 0) {
+
         let latestEndTime = 0;
         let unlimitedUserExists = false;
-// Cari baris ini di dalam fungsi checkoutUserSession kamu!
+
         usersArray.forEach((remUser, remIndex) => {
+
             const remPurpose = purposesArray[remIndex];
-            const remStartTime = rawFirebaseSnapshot[`Start_User_${remUser}`];
+
+            const remStartTime =
+                rawFirebaseSnapshot[`Start_User_${remUser}`];
 
             if (!remStartTime) return;
+
             if (remPurpose === 'Lain-lain / Siram Tanaman') {
                 unlimitedUserExists = true;
                 return;
             }
 
             let durationMs = 40 * 60000;
+
             if (remPurpose === 'Mesin Cuci') {
-                // AMBIL DATA DARI FIREBASE SNAPSHOT (Bukan dikunci 120 menit lagi!)
-                const durasiKustomDariFirebase = rawFirebaseSnapshot.Durasi_Mesin_Cuci_Kustom || 120;
-                durationMs = durasiKustomDariFirebase * 60000;
+                durationMs = 120 * 60000;
             }
 
-            const endTime = remStartTime + durationMs;
-            if (endTime > latestEndTime) { latestEndTime = endTime; }
+            const endTime =
+                remStartTime + durationMs;
+
+            if (endTime > latestEndTime) {
+                latestEndTime = endTime;
+            }
         });
 
         updates['AquaSync/Realtime_Status/Pump_Button'] = 1;
-        updates['AquaSync/Realtime_Status/Active_User'] = usersArray.join(' + ');
-        updates['AquaSync/Realtime_Status/Water_Purpose'] = purposesArray.join(' + ');
+        updates['AquaSync/Realtime_Status/Active_User'] =
+            usersArray.join(' + ');
+        updates['AquaSync/Realtime_Status/Water_Purpose'] =
+            purposesArray.join(' + ');
 
         if (unlimitedUserExists) {
             updates['AquaSync/Realtime_Status/Pump_Timeout'] = 0;
         } else {
-            updates['AquaSync/Realtime_Status/Pump_Timeout'] = latestEndTime;
+            updates['AquaSync/Realtime_Status/Pump_Timeout'] =
+                latestEndTime;
         }
 
-        update(ref(database), updates).then(() => { currentPumpState = 1; });
-    } else {
-        localLockBypass = true;
-        update(ref(database), { 'AquaSync/Control/Button_condition': false })
-            .then(() => { startHandshakeMatiTimeout(); });
+        update(ref(database), updates)
+            .then(() => {
+                currentPumpState = 1;
+            })
+            .catch(err => {
+                console.error(err);
+            });
+    }
+
+    // ==================================================
+    // USER TERAKHIR KELUAR
+    // ==================================================
+    else {
+
+        // Simpan statistik + hapus Start_User dulu
+        update(ref(database), updates)
+            .then(() => {
+
+                // Sama persis seperti Force Stop
+                localLockBypass = true;
+
+                return update(ref(database), {
+                    'AquaSync/Control/Button_condition': false
+                });
+
+            })
+            .then(() => {
+
+                startHandshakeMatiTimeout();
+
+            })
+            .catch(err => {
+                console.error(err);
+            });
     }
 };
 
-window.submitWaterPurpose = function(purpose, customDuration = 0) {
+window.submitWaterPurpose = function(purpose) {
     document.getElementById('purposeModal').style.display = 'none';
 
     let durationMinutes = 0;
-    if (purpose === 'Mesin Cuci') { 
-        durationMinutes = customDuration > 0 ? customDuration : 120; // Menggunakan durasi pilihan user!
-    } 
+    if (purpose === 'Mesin Cuci') { durationMinutes = 120; } 
     else if (purpose === 'Mandi & Buang Air' || purpose === 'Cuci Piring') { durationMinutes = 40; } 
 
     const now = Date.now();
@@ -490,7 +578,9 @@ window.triggerForceStop = function() {
     if (confirm("Apakah Anda yakin ingin mematikan pompa secara paksa?")) {
         localLockBypass = true;
         update(ref(database), { 'AquaSync/Control/Button_condition': false })
-            .then(() => { startHandshakeMatiTimeout(); });
+            .then(() => {
+                startHandshakeMatiTimeout(); 
+            });
     }
 }
 
@@ -516,7 +606,6 @@ function sendPumpStateToFirebase(state, user, purpose, timeoutTimestamp) {
             isVibrationValidated = false;
             clearInterval(handshakeInterval);
             clearInterval(activityTimerInterval);
-            clearInterval(intervalPengawasAI);
             updatePumpUI(0);
         }
     })
@@ -548,7 +637,6 @@ function startHandshakeTimeout() {
 function startHandshakeMatiTimeout() {
     clearInterval(handshakeInterval);
     clearInterval(activityTimerInterval); 
-    clearInterval(intervalPengawasAI);
     isVibrationValidated = false;
     let timeLeft = 60;
     
@@ -588,6 +676,9 @@ function startHandshakeMatiTimeout() {
     }, 1000);
 }
 
+// Tambahkan 2 variabel global baru ini di bagian paling atas script kamu
+let pemicuNotifTerpanggil = false;
+
 function startActivityCountdown() {
     clearInterval(activityTimerInterval);
     const timerDisplay = document.getElementById('tDisplay');
@@ -598,24 +689,66 @@ function startActivityCountdown() {
     }
     if (timerDisplay) timerDisplay.style.display = 'block';
 
-    jalankanPengawasAIPersonal();
+    // Ambil batas AI khusus untuk user yang sedang login saat ini secara real-time
+    // Catatan: loggedInUserEmail di kodinganmu isinya string nama (misal: "audrey")
+    const aiUserRef = ref(database, `AquaSync/Users_AI/${loggedInUserEmail}`);
+    
+    onValue(aiUserRef, (aiSnapshot) => {
+        const dataAI = aiSnapshot.val() || { batas_timer_ai: 20, threshold_mati_paksa: 30 };
+        const batasTimerAi = dataAI.batas_timer_ai;
+        const thresholdMatiPaksa = dataAI.threshold_mati_paksa;
 
-    activityTimerInterval = setInterval(() => {
-        const now = Date.now();
-        const difference = globalPumpTimeout - now;
+        pemicuNotifTerpanggil = false; // Reset status notifikasi tiap sesi mulai
 
-        if (difference <= 0) {
-            clearInterval(activityTimerInterval);
-            if (timerDisplay) timerDisplay.style.display = 'none';
-            alert("⏰ WAKTU HABIS: Pompa otomatis dimatikan.");
-            sendPumpStateToFirebase(0, "-", "-", 0); 
-        } else {
-            const totalSeconds = Math.floor(difference / 1000);
-            const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
-            const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-            if (timerDisplay) timerDisplay.innerText = `${minutes}:${seconds}`;
-        }
-    }, 1000);
+        activityTimerInterval = setInterval(() => {
+            const now = Date.now();
+            
+            // Ambil waktu mulai user mandi (Gunakan variabel dinamismu)
+            const firebaseStartTime = rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`] || now;
+            const selisihMenit = Math.floor((now - firebaseStartTime) / 60000);
+
+            // TAHAP 1: PERSUASIF (Mencapai batas wajar AI, munculkan Notifikasi)
+            if (selisihMenit >= batasTimerAi && selisihMenit < thresholdMatiPaksa && !pemicuNotifTerpanggil) {
+                pemicuNotifTerpanggil = true; 
+                
+                // Pemicu Notifikasi bawaan browser
+                if (Notification.permission === "granted") {
+                    new Notification("⚠️ Peringatan AquaSync", `Halo ${loggedInUserEmail}, penggunaan air telah melewati batas wajar Anda (${batasTimerAi} menit). Mohon matikan jika sudah selesai.`);
+                } else {
+                    alert(`⚠️ HALO ${loggedInUserEmail.toUpperCase()}! Pemakaian air sudah lewat batas wajar Anda (${batasTimerAi} Menit). Mohon matikan pompa jika sudah selesai ya!`);
+                }
+                
+                // Beri efek visual pada background dashboard aslimu biar berubah warna peringatan
+                if(document.getElementById('bigPumpStatus')) {
+                    document.getElementById('bigPumpStatus').innerText = "MELEWATI BATAS WAJAR!";
+                    document.getElementById('bigPumpStatus').style.color = "#fdcb6e"; // Oranye
+                }
+            }
+
+            // TAHAP 2: PROTEKTIF (Lupa Matiin / Menyentuh Batas Kritis +10)
+            if (selisihMenit >= thresholdMatiPaksa) {
+                clearInterval(activityTimerInterval);
+                alert("🚨 SYSTEM SHUTDOWN: Pompa dimatikan otomatis karena mendeteksi anomali kelalaian (Lupa mematikan).");
+                
+                // Eksekusi fungsi Force Stop bawaan kodingan aslimu agar relay mati fisik!
+                localLockBypass = true;
+                update(ref(database), { 'AquaSync/Control/Button_condition': false })
+                    .then(() => {
+                        startHandshakeMatiTimeout(); 
+                    });
+            }
+
+            // Kodingan visual sisa waktu countdown aslimu biar tetep jalan di layar
+            const difference = globalPumpTimeout - now;
+            if (difference > 0) {
+                const totalSeconds = Math.floor(difference / 1000);
+                const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+                const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+                if (timerDisplay) timerDisplay.innerText = `${minutes}:${seconds}`;
+            }
+
+        }, 1000); // Cek berkala tiap detik
+    }, { onlyOnce: true });
 }
 
 function updatePumpUI(state, timeText = "01:00") {
@@ -657,143 +790,4 @@ function updatePumpUISuccess() {
         timer.style.display = 'block'; 
         timer.style.color = "#36c2b5"; 
     }
-}
-
-function jalankanPengawasAIPersonal() {
-    pemicuNotifTerpanggil = false;
-    clearInterval(intervalPengawasAI);
-
-    const aiUserRef = ref(database, `AquaSync/Users_AI/${loggedInUserEmail}`);
-    
-    onValue(aiUserRef, (aiSnapshot) => {
-        const dataAI = aiSnapshot.val();
-        if (!dataAI) return;
-
-        const batasTimerAi = dataAI.batas_timer_ai || 20;
-        const thresholdMatiPaksa = dataAI.threshold_mati_paksa || 30;
-
-        intervalPengawasAI = setInterval(() => {
-            if (currentPumpState === 0) {
-                clearInterval(intervalPengawasAI);
-                return;
-            }
-
-            const now = Date.now();
-            const firebaseStartTime = rawFirebaseSnapshot[`Start_User_${loggedInUserEmail}`] || now;
-            const selisihMenit = Math.floor((now - firebaseStartTime) / 60000);
-
-            if (selisihMenit >= batasTimerAi && selisihMenit < thresholdMatiPaksa && !pemicuNotifTerpanggil) {
-                pemicuNotifTerpanggil = true;
-                if (Notification.permission === "granted") {
-                    new Notification("⚠️ Peringatan AquaSync", `Halo ${loggedInUserEmail}, penggunaan air melewati batas wajar Anda (${batasTimerAi} menit).`);
-                } else {
-                    alert(`⚠️ HALO ${loggedInUserEmail.toUpperCase()}! Pemakaian air sudah lewat batas wajar Anda (${batasTimerAi} Menit). Mohon matikan jika sudah selesai.`);
-                }
-            }
-
-            if (selisihMenit >= thresholdMatiPaksa) {
-                clearInterval(intervalPengawasAI);
-                alert("🚨 SYSTEM SHUTDOWN: Pompa dimatikan otomatis oleh sistem karena terdeteksi kelalaian.");
-                
-                localLockBypass = true;
-                update(ref(database), { 'AquaSync/Control/Button_condition': false })
-                    .then(() => { startHandshakeMatiTimeout(); });
-            }
-        }, 5000); 
-
-    }, { onlyOnce: true }); 
-}
-
-// 1. Fungsi saat tombol "Mesin Cuci" diklik: Sembunyikan menu utama, munculkan input menit
-window.bukaSubMenuMesinCuci = function() {
-    document.getElementById('mainPurposeMenu').style.display = 'none';
-    document.getElementById('subCpuMenu').style.display = 'flex';
-    document.getElementById('modalTitle').innerText = "🧺 Pengaturan Mesin Cuci:";
-    document.getElementById('modalDesc').innerText = "Masukkan estimasi waktu operasional mesin cuci Anda.";
-}
-
-// 2. Fungsi tombol kembali: Tukar tampilan lagi ke menu utama
-window.kembaliKeMenuUtama = function() {
-    document.getElementById('mainPurposeMenu').style.display = 'flex';
-    document.getElementById('subCpuMenu').style.display = 'none';
-    document.getElementById('modalTitle').innerText = "Keperluan Penggunaan Air:";
-    document.getElementById('modalDesc').innerText = "Silakan pilih aktivitas untuk menggunakan air:";
-}
-
-// 3. Fungsi saat user klik "Mulai Sekarang" setelah mengisi angka menit
-window.submitMesinCuciCustom = function() {
-    const inputMenit = document.getElementById('customMesinCuciTime').value;
-    const durasiMenit = parseInt(inputMenit) || 60; // Default 60 menit jika kosong
-    
-    // Kirim data ke fungsi submit bawaanmu
-    window.submitWaterPurpose('Mesin Cuci', durasiMenit);
-}
-
-// 4. Modifikasi fungsi closeModal bawaanmu agar men-reset tampilan menu saat ditutup
-const fungsiCloseModalAsli = window.closeModal;
-window.closeModal = function() {
-    if (fungsiCloseModalAsli) fungsiCloseModalAsli();
-    // Kembalikan tampilan ke menu utama agar kalau dibuka lagi tidak tersangkut di submenu
-    window.kembaliKeMenuUtama();
-}
-
-window.submitMesinCuciFix = function() {
-    const inputMenit = document.getElementById('customMesinCuciTime').value;
-    const durationMinutes = parseInt(inputMenit) || 60; // Default 60 menit jika kosong
-
-    document.getElementById('purposeModal').style.display = 'none';
-
-    const now = Date.now();
-    let newTimeoutTimestamp = 0;
-    let finalUsers = loggedInUserEmail;
-    let finalPurposes = 'Mesin Cuci';
-
-    const updates = {};
-    updates[`AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`] = now;
-    
-    // SIMPAN DURASI KUSTOM AGAR TIDAK DIHANCURKAN OLEH FUNGSI CHECKOUT
-    updates['AquaSync/Realtime_Status/Durasi_Mesin_Cuci_Kustom'] = durationMinutes;
-
-    if (currentPumpState === 1 && globalPumpTimeout > now) {
-        if (!currentActiveUsers.includes(loggedInUserEmail)) { finalUsers = `${currentActiveUsers} + ${loggedInUserEmail}`; }
-        else { finalUsers = currentActiveUsers; }
-
-        if (!currentWaterPurposes.includes('Mesin Cuci')) { finalPurposes = `${currentWaterPurposes} + Mesin Cuci`; }
-        else { finalPurposes = currentWaterPurposes; }
-
-        const remainingTimeMinutes = Math.floor((globalPumpTimeout - now) / 60000);
-        if (durationMinutes > remainingTimeMinutes) { newTimeoutTimestamp = now + (durationMinutes * 60000); }
-        else { newTimeoutTimestamp = globalPumpTimeout; }
-
-        updates['AquaSync/Realtime_Status/Pump_Button'] = 1;
-        updates['AquaSync/Realtime_Status/Active_User'] = finalUsers;
-        updates['AquaSync/Realtime_Status/Water_Purpose'] = finalPurposes;
-        updates['AquaSync/Realtime_Status/Pump_Timeout'] = newTimeoutTimestamp;
-
-        update(ref(database), updates).then(() => { currentPumpState = 1; });
-
-    } else {
-        newTimeoutTimestamp = durationMinutes > 0 ? now + (durationMinutes * 60000) : 0;
-        
-        const initUpdates = {};
-        initUpdates['AquaSync/Control/Button_condition'] = true;
-        
-        update(ref(database), initUpdates).then(() => {
-            return set(ref(database, 'AquaSync/Realtime_Status/Vibration'), false);
-        })
-        .then(() => {
-            updates['AquaSync/Realtime_Status/Pump_Button'] = 1;
-            updates['AquaSync/Realtime_Status/Active_User'] = finalUsers;
-            updates['AquaSync/Realtime_Status/Water_Purpose'] = finalPurposes;
-            updates['AquaSync/Realtime_Status/Pump_Timeout'] = newTimeoutTimestamp;
-            return update(ref(database), updates);
-        })
-        .then(() => { startHandshakeTimeout(); });
-    }
-
-    // Reset tampilan menu modal
-    document.getElementById('mainPurposeMenu').style.display = 'flex';
-    document.getElementById('subCpuMenu').style.display = 'none';
-    document.getElementById('modalTitle').innerText = "Keperluan Penggunaan Air:";
-    document.getElementById('modalDesc').innerText = "Silakan pilih aktivitas Anda untuk validasi data otomatis skripsi.";
 }
