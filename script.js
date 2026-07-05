@@ -64,6 +64,7 @@ onValue(statsRef, (snapshot) => {
 onValue(realtimeRef, (snapshot) => {
     const data = snapshot.val();
     if (data) {
+        // PERBAIKAN BUG AKURASI DATA: Simpan snapshot root secara berkala
         rawFirebaseSnapshot = data; 
         
         if (document.getElementById('valVoltage')) {
@@ -135,16 +136,20 @@ onValue(realtimeRef, (snapshot) => {
                 const purposesArray = currentWaterPurposes.split(' + ');
                 let htmlContent = "";
 
+                // VERSI FIX FOTO 2: Kotak atas murni bersih berisi nama dan tujuan saja tanpa timer!
                 usersArray.forEach((user, index) => {
                     const purpose = purposesArray[index] || "Keperluan Umum";
                     htmlContent += `
-                        <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); box-shadow: 0 2px 5px rgba(0,0,0,0.01); margin-bottom: 5px;">
+                        <div style="background: #f8f9fa; padding: 8px 16px; border-radius: 10px; width: 100%; max-width: 320px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.02); margin-bottom: 5px;">
                             <span style="font-weight: 700; color: #2d3436;">👤 ${user}</span>
                             <span style="color: #36c2b5; font-weight: 600; font-size: 13px;">➔ ${purpose}</span>
                         </div>
                     `;
                 });
                 if (bigDetail) bigDetail.innerHTML = htmlContent;
+
+                // Pastikan mesin pemicu interval berjalan lancar di bawah tombol bulat
+                startActivityCountdown();
             } else {
                 if (bigStatus && bigStatus.innerText !== "VERIFIKASI MATI...") {
                     bigStatus.innerText = "MEMVERIFIKASI...";
@@ -156,6 +161,11 @@ onValue(realtimeRef, (snapshot) => {
         else {
             isVibrationValidated = false;
             localLockBypass = false; 
+            
+            // RESET PENANDA NOTIFIKASI AGAR BISA TERPANGGIL LAGI DI TES BERIKUTNYA
+            Object.keys(window).forEach(key => {
+                if (key.startsWith('notifTerpanggil_')) { delete window[key]; }
+            });
             
             if (forceStopBtn) forceStopBtn.style.display = 'none'; 
             
@@ -179,7 +189,7 @@ onValue(realtimeRef, (snapshot) => {
         } else if (data.Pump_Button === 0) {
             updatePumpUI(0);
         }
-    } // <--- FIX: Di sinilah letak kurung tutup pasangannya yang benar!
+    } 
 });
 
 // =================================================================
@@ -200,7 +210,7 @@ onValue(predictionRef, (snapshot) => {
 
     const sekarang = new Date();
     const hariIni = sekarang.getDay(); 
-    const jamIni = sekarang.getHours();
+    const jamIni = Harrison = sekarang.getHours();
     const notifElemen = document.getElementById('resetNotification');
 
     if (notifElemen) {
@@ -384,11 +394,20 @@ window.checkoutUserSession = async function() {
     }
 
     updates = {};
-
-    if (usersArray.length > 0) {
+if (usersArray.length > 0) {
         let latestEndTime = 0;
         let unlimitedUserExists = false;
-// Cari baris ini di dalam fungsi checkoutUserSession kamu!
+
+        // Ambil data snapshot AI secara lokal untuk mencocokkan threshold terbaru
+        let snapshotDataAI = {};
+        try {
+            const { get, child } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
+            const snapshotAI = await get(child(ref(database), `AquaSync/Users_AI`));
+            if (snapshotAI.exists()) { snapshotDataAI = snapshotAI.val(); }
+        } catch (e) {
+            console.error("Gagal memuat parameter AI saat checkout:", e);
+        }
+
         usersArray.forEach((remUser, remIndex) => {
             const remPurpose = purposesArray[remIndex];
             const remStartTime = rawFirebaseSnapshot[`Start_User_${remUser}`];
@@ -399,13 +418,22 @@ window.checkoutUserSession = async function() {
                 return;
             }
 
-            let durationMs = 40 * 60000;
-            if (remPurpose === 'Mesin Cuci') {
-                // AMBIL DATA DARI FIREBASE SNAPSHOT (Bukan dikunci 120 menit lagi!)
-                const durasiKustomDariFirebase = rawFirebaseSnapshot.Durasi_Mesin_Cuci_Kustom || 120;
-                durationMs = durasiKustomDariFirebase * 60000;
+            // ==========================================================
+            // FIX LOGIKA SISA WAKTU: AMBIL DARI THRESHOLD AI MASING-MASING USER
+            // ==========================================================
+            let durationMinutes = 16; // Fallback default
+            
+            if (remPurpose === 'Mandi & Buang Air') {
+                const dataUserAI = snapshotDataAI[remUser];
+                // Ambil threshold_mati_paksa milik user tersebut (misal 18 menit)
+                durationMinutes = (dataUserAI && dataUserAI.threshold_mati_paksa) ? dataUserAI.threshold_mati_paksa : 16;
+            } else if (remPurpose === 'Mesin Cuci') {
+                durationMinutes = rawFirebaseSnapshot.Durasi_Mesin_Cuci_Kustom || 60;
+            } else if (remPurpose === 'Cuci Piring') {
+                durationMinutes = 25;
             }
 
+            const durationMs = durationMinutes * 60000;
             const endTime = remStartTime + durationMs;
             if (endTime > latestEndTime) { latestEndTime = endTime; }
         });
@@ -421,14 +449,14 @@ window.checkoutUserSession = async function() {
         }
 
         update(ref(database), updates).then(() => { currentPumpState = 1; });
-    } else {
+    }else {
         localLockBypass = true;
         update(ref(database), { 'AquaSync/Control/Button_condition': false })
             .then(() => { startHandshakeMatiTimeout(); });
     }
 };
 
-window.submitWaterPurpose = async function(purpose, customDuration = 0) { // Tambahkan 'async' di depan function
+window.submitWaterPurpose = async function(purpose, customDuration = 0) {
     document.getElementById('purposeModal').style.display = 'none';
 
     let durationMinutes = 0;
@@ -439,24 +467,23 @@ window.submitWaterPurpose = async function(purpose, customDuration = 0) { // Tam
         durationMinutes = 25; 
     }
     // ==========================================================
-    // AMBIL DATA LIVE LANGSUNG DARI PATH USERS_AI (FIX SINKRONISASI AI)
+    // LOGIKA DINAMIS SINKRONISASI FIKSASI ABSOLUT THRESHOLD 16 MENIT
     // ==========================================================
-    else if (purpose === 'Mandi & Buang Air') { 
+    else if (purpose === 'Mandi & Disinfeksi' || purpose === 'Mandi & Buang Air') { 
         try {
-            // Kita panggil manual ke path database luar agar tidak terikat snapshot Realtime_Status
             const { get, child } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
             const snapshotAI = await get(child(ref(database), `AquaSync/Users_AI/${loggedInUserEmail}`));
             
-            if (snapshotAI.exists() && snapshotAI.val().batas_timer_ai) {
-                durationMinutes = snapshotAI.val().batas_timer_ai;
-                console.log(`[ADAPTIVE AI SUCCESS] Menggunakan batas rekomendasi AI: ${durationMinutes} menit`);
+            if (snapshotAI.exists() && snapshotAI.val().threshold_mati_paksa) {
+                durationMinutes = snapshotAI.val().threshold_mati_paksa;
+                console.log(`[SYSTEM] Mengunci plafon batas mati kritis pompa: ${durationMinutes} menit`);
             } else {
-                durationMinutes = 40; // Default jika user baru/belum ada data
-                console.log(`[ADAPTIVE AI COLD-START] Belum ada data kalkulasi AI, menggunakan default: 40 menit`);
+                durationMinutes = 16; // Default aman matching threshold AI
+                console.log(`[SYSTEM] Menggunakan fallback batas durasi maksimal: 16 menit`);
             }
         } catch (err) {
-            durationMinutes = 40; // Default jika koneksi gagal
-            console.error("Gagal mengambil parameter AI, fallback ke default:", err);
+            durationMinutes = 16; 
+            console.error("Gagal menjangkau Firebase, fallback:", err);
         }
     }
 
@@ -611,33 +638,113 @@ function startHandshakeMatiTimeout() {
     }, 1000);
 }
 
+// =================================================================
+// E. FIKSASI RANCANGAN UTAMA PEMUTAR DETIK GANDA (FOTO 2)
+// =================================================================
 function startActivityCountdown() {
     clearInterval(activityTimerInterval);
-    const timerDisplay = document.getElementById('tDisplay');
     
+    const timerDisplay = document.getElementById('tDisplay');
+    if (!timerDisplay) return;
+
     if (globalPumpTimeout === 0) {
-        if (timerDisplay) timerDisplay.style.display = 'none';
+        timerDisplay.style.display = 'none';
         return;
     }
-    if (timerDisplay) timerDisplay.style.display = 'block';
+    timerDisplay.style.display = 'block';
 
+    // Panggil mesin backup pengawas notifikasi bawaan
     jalankanPengawasAIPersonal();
 
-    activityTimerInterval = setInterval(() => {
+    // MESIN ENGINE UTAMA: Berputar aktif meluncurkan detik tanpa refresh!
+    activityTimerInterval = setInterval(async () => {
         const now = Date.now();
         const difference = globalPumpTimeout - now;
 
         if (difference <= 0) {
             clearInterval(activityTimerInterval);
-            if (timerDisplay) timerDisplay.style.display = 'none';
-            alert("⏰ WAKTU HABIS: Pompa otomatis dimatikan.");
+            timerDisplay.style.display = 'none';
+            alert("⏰ WAKTU HABIS: Pompa otomatis dimatikan oleh batas kritis.");
             sendPumpStateToFirebase(0, "-", "-", 0); 
-        } else {
-            const totalSeconds = Math.floor(difference / 1000);
-            const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
-            const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-            if (timerDisplay) timerDisplay.innerText = `${minutes}:${seconds}`;
+            return;
         }
+
+        const usersArray = currentActiveUsers.split(' + ');
+        const purposesArray = currentWaterPurposes.split(' + ');
+
+        // 1. Hitung Sisa Detik Pompa Utama (Merah)
+        const totalSecondsPompa = Math.floor(difference / 1000);
+        const minPompa = Math.floor(totalSecondsPompa / 60);
+        const secPompa = Math.floor(totalSecondsPompa % 60);
+        const formatPompa = `${minPompa.toString().padStart(2, '0')}:${secPompa.toString().padStart(2, '0')}`;
+
+        // Mulai menyusun injeksi dokumen string HTML di bawah tombol bulat
+        let htmlDinamis = `<div style="text-align: center; font-family: sans-serif; font-size: 14px; margin-top: 12px; line-height: 1.6;">`;
+        htmlDinamis += `<div style="color: #3498db; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 4px;">TIMER USER :</div>`;
+
+        // Ambil data snapshot eksternal dari jalur root Users_AI untuk mendapatkan nilai dinamis terbaru
+        let snapshotDataAI = {};
+        try {
+            const { get, child } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
+            const snapshotAI = await get(child(ref(database), `AquaSync/Users_AI`));
+            if (snapshotAI.exists()) {
+                snapshotDataAI = snapshotAI.val();
+            }
+        } catch (e) {
+            console.error("Gagal sinkronisasi internal detik:", e);
+        }
+
+        // 2. Hitung Sisa Detik Personal Masing-Masing User (Hijau/Oranye)
+        usersArray.forEach((user) => {
+            const userIndex = usersArray.indexOf(user);
+            const purpose = purposesArray[userIndex] || "Keperluan Umum";
+            const firebaseStartTime = rawFirebaseSnapshot[`Start_User_${user}`] || now;
+
+            let batasWajarMenit = 40;
+            if (purpose === 'Mandi & Buang Air') {
+                const dataUserAI = snapshotDataAI[user];
+                batasWajarMenit = (dataUserAI && dataUserAI.batas_timer_ai) ? dataUserAI.batas_timer_ai : 6;
+            } else if (purpose === 'Mesin Cuci') {
+                batasWajarMenit = rawFirebaseSnapshot.Durasi_Mesin_Cuci_Kustom || 60;
+            } else if (purpose === 'Cuci Piring') {
+                batasWajarMenit = 25;
+            }
+
+            const batasWajarMs = batasWajarMenit * 60000;
+            const waktuBerjalanMs = now - firebaseStartTime;
+            const sisaWajarMs = batasWajarMs - waktuBerjalanMs;
+
+            let formatUser = "00:00";
+            let warnaUser = "#2ecc71"; // Hijau stabil
+
+            if (sisaWajarMs > 0) {
+                const totalSecUser = Math.floor(sisaWajarMs / 1000);
+                const minUser = Math.floor(totalSecUser / 60);
+                const secUser = Math.floor(totalSecUser % 60);
+                formatUser = `${minUser.toString().padStart(2, '0')}:${secUser.toString().padStart(2, '0')}`;
+            } else {
+                warnaUser = "#e67e22"; // Berubah oranye peringatan
+
+                if (!window[`alertTerpanggil_${user}`]) {
+                    window[`alertTerpanggil_${user}`] = true;
+                    alert(`⚠️ NOTIFIKASI AMAN:\nHalo ${user.toUpperCase()}!\nWaktu wajar penggunaan air untuk [${purpose}] telah habis (${batasWajarMenit} menit).\nPompa tetap menyala untuk toleransi aktivitas, mohon checkout jika sudah selesai.`);
+                }
+            }
+
+            htmlDinamis += `<div style="color: ${warnaUser}; font-weight: 700; font-family: monospace; font-size: 15px;">${user} : ${formatUser}</div>`;
+        });
+
+        // 3. Cetak Baris Pengunci Timer Kritis Pompa (Merah) di Bagian Bawah Kelompok
+        htmlDinamis += `
+            <div style="color: #e74c3c; font-weight: 700; font-size: 14px; margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 6px;">
+                TIMER POMPA : ${formatPompa}
+            </div>
+        `;
+        htmlDinamis += `</div>`;
+
+        // Tembakkan total teks HTML terintegrasi ke elemen bawaah tombol bulat
+        timerDisplay.innerHTML = htmlDinamis;
+
     }, 1000);
 }
 
@@ -727,7 +834,6 @@ function jalankanPengawasAIPersonal() {
     }, { onlyOnce: true }); 
 }
 
-// 1. Fungsi saat tombol "Mesin Cuci" diklik: Sembunyikan menu utama, munculkan input menit
 window.bukaSubMenuMesinCuci = function() {
     document.getElementById('mainPurposeMenu').style.display = 'none';
     document.getElementById('subCpuMenu').style.display = 'flex';
@@ -735,7 +841,6 @@ window.bukaSubMenuMesinCuci = function() {
     document.getElementById('modalDesc').innerText = "Masukkan estimasi waktu operasional mesin cuci Anda.";
 }
 
-// 2. Fungsi tombol kembali: Tukar tampilan lagi ke menu utama
 window.kembaliKeMenuUtama = function() {
     document.getElementById('mainPurposeMenu').style.display = 'flex';
     document.getElementById('subCpuMenu').style.display = 'none';
@@ -743,26 +848,21 @@ window.kembaliKeMenuUtama = function() {
     document.getElementById('modalDesc').innerText = "Silakan pilih aktivitas untuk menggunakan air:";
 }
 
-// 3. Fungsi saat user klik "Mulai Sekarang" setelah mengisi angka menit
 window.submitMesinCuciCustom = function() {
     const inputMenit = document.getElementById('customMesinCuciTime').value;
-    const durasiMenit = parseInt(inputMenit) || 60; // Default 60 menit jika kosong
-    
-    // Kirim data ke fungsi submit bawaanmu
+    const durasiMenit = parseInt(inputMenit) || 60; 
     window.submitWaterPurpose('Mesin Cuci', durasiMenit);
 }
 
-// 4. Modifikasi fungsi closeModal bawaanmu agar men-reset tampilan menu saat ditutup
 const fungsiCloseModalAsli = window.closeModal;
 window.closeModal = function() {
     if (fungsiCloseModalAsli) fungsiCloseModalAsli();
-    // Kembalikan tampilan ke menu utama agar kalau dibuka lagi tidak tersangkut di submenu
     window.kembaliKeMenuUtama();
 }
 
 window.submitMesinCuciFix = function() {
     const inputMenit = document.getElementById('customMesinCuciTime').value;
-    const durationMinutes = parseInt(inputMenit) || 60; // Default 60 menit jika kosong
+    const durationMinutes = parseInt(inputMenit) || 60; 
 
     document.getElementById('purposeModal').style.display = 'none';
 
@@ -773,8 +873,6 @@ window.submitMesinCuciFix = function() {
 
     const updates = {};
     updates[`AquaSync/Realtime_Status/Start_User_${loggedInUserEmail}`] = now;
-    
-    // SIMPAN DURASI KUSTOM AGAR TIDAK DIHANCURKAN OLEH FUNGSI CHECKOUT
     updates['AquaSync/Realtime_Status/Durasi_Mesin_Cuci_Kustom'] = durationMinutes;
 
     if (currentPumpState === 1 && globalPumpTimeout > now) {
@@ -814,7 +912,6 @@ window.submitMesinCuciFix = function() {
         .then(() => { startHandshakeTimeout(); });
     }
 
-    // Reset tampilan menu modal
     document.getElementById('mainPurposeMenu').style.display = 'flex';
     document.getElementById('subCpuMenu').style.display = 'none';
     document.getElementById('modalTitle').innerText = "Keperluan Penggunaan Air:";
