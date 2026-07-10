@@ -81,7 +81,11 @@ onValue(realtimeRef, (snapshot) => {
         }
 
         const currentKwh = data.Energy || 0;
-        const hitungRupiahLive = Math.round(currentKwh * 1444.70);
+// =================================================================
+        // AMAN & SINKRON: MENGAMBIL DATA ACTUAL BILL LANGSUNG DARI PYTHON
+        // =================================================================
+        // 🔥 Ganti hitungRupiahLive lama kamu dengan variabel pembaca data matang dari Python ini:
+        const hitungRupiahLive = data.Actual_Bill || 0;
 
         const actualBillElem = document.getElementById('valActualBill'); 
         if (actualBillElem) {
@@ -90,6 +94,12 @@ onValue(realtimeRef, (snapshot) => {
             } else {
                 actualBillElem.innerText = rupiahFormatter.format(hitungRupiahLive);
             }
+        }
+
+        // 🔥 Ganti juga bagian statActualBill (statistik ringkasan bawah) di sini agar nilainya kembar konsisten:
+        const statBillElem = document.getElementById('statActualBill');
+        if (statBillElem) {
+            statBillElem.innerText = rupiahFormatter.format(hitungRupiahLive);
         }
 
         if (document.getElementById('valWaterLevel')) {

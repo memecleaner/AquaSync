@@ -116,13 +116,18 @@
             // Pengaman tingkat tinggi, jika database kosong, beri nilai default objek {}
             const root = snapshot.val() || {};
 
-            // 1. HITUNG ACTUAL BILL DARI DATA DAY_1 s/d DAY_7
-            let totalMingguan = 0;
-            const actualUsage = root.actual_usage || {};
-            for (let i = 1; i <= 7; i++) {
-                totalMingguan += (actualUsage[`day_${i}`] || 0);
+            // =================================================================
+            // SINKRONISASI MUTLAK: AMBIL ACTUAL BILL GLOBAL DARI REALTIME_STATUS
+            // =================================================================
+            // Ambil data dari rumpun Realtime_Status yang di-update Python tiap 20 detik
+            const realtimeStatus = root.Realtime_Status || {};
+            const totalMingguan = realtimeStatus.Actual_Bill || 0; 
+
+            // Tampilkan langsung ke ID elemen HTML statistik ringkasan kamu
+            const statBillElem = document.getElementById('statActualBill');
+            if (statBillElem) {
+                statBillElem.innerText = rupiah.format(totalMingguan);
             }
-            document.getElementById('statActualBill').innerText = rupiah.format(totalMingguan);
 
             // 2. TAMPILKAN AI PREDICTED
             const predictedBillVal = (root.Prediction && root.Prediction.Monthly_Bill) || 0;
