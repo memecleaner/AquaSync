@@ -36,103 +36,121 @@ def update_user_timer_ai(user_id):
         if not user_data:
             return
 
-        durasi_aktual = user_data.get('durasi_aktual_terakhir', 0)
-        rata_rata_historis = user_data.get('rata_rata_historis', 0)
+        # Ambil parameter adaptif user
+        rata_rata_historis = user_data.get("rata_rata_historis", 10)
+        durasi_aktual_terakhir = user_data.get("durasi_aktual_terakhir", 10)
         
-        # Cold Start Handling
-        if rata_rata_historis == 0:
-            rata_rata_historis = durasi_aktual
-
-        # Rule-Based Adaptive Alpha Switching
-        threshold_lonjakan = 1.5 * rata_rata_historis
-        if durasi_aktual > threshold_lonjakan:
-            alfa = 0.8
-            status = "Boros"
-        else:
-            alfa = 0.3
-            status = "Optimal"
-
-        # Rumus Peramalan Adaptive Exponential Smoothing
-        prediksi_durasi_ideal = (alfa * durasi_aktual) + ((1 - alfa) * rata_rata_historis)
-
-        # Penentuan Batas Timer + Safety Buffer 5 Menit
-        batas_timer_baru = round(prediksi_durasi_ideal + 5)
+        # Algoritma Adaptive Exponential Smoothing (AES)
+        # alpha dinamis mendeteksi lonjakan durasi secara preventif
+        selisih = abs(durasi_aktual_terakhir - rata_rata_historis)
+        alpha = 0.6 if selisih > 5 else 0.3
         
-        # Threshold Mati Paksa Relatif (+10 Menit dari Timer AI)
-        threshold_mati_paksa_baru = batas_timer_baru + 10
-
-        # Push update parameter hasil kalkulasi terbaru ke Firebase
+        # Perhitungan nilai rata-rata baru
+        rata_rata_baru = round((alpha * durasi_aktual_terakhir) + ((1 - alpha) * rata_rata_historis))
+        
+        # Tentukan threshold mati paksa (Safety Buffer)
+        threshold_mati_paksa = rata_rata_baru + 5
+        if threshold_mati_paksa > 20: 
+            threshold_mati_paksa = 20
+        elif threshold_mati_paksa < 5:
+            threshold_mati_paksa = 5
+            
+        # Tentukan status efisiensi konsumsi air
+        status_konsumsi = "Optimal"
+        if durasi_aktual_terakhir > threshold_mati_paksa:
+            status_konsumsi = "Boros (Terinterupsi AI)"
+        elif durasi_aktual_terakhir < rata_rata_baru:
+            status_konsumsi = "Sangat Efisien"
+            
+        # Update kembali data cerdas ke Firebase per user
         user_child.update({
-            'rata_rata_historis': prediksi_durasi_ideal,
-            'batas_timer_ai': batas_timer_baru,
-            'threshold_mati_paksa': threshold_mati_paksa_baru,
-            'status_konsumsi': status
+            "rata_rata_historis": rata_rata_baru,
+            "threshold_mati_paksa": threshold_mati_paksa,
+            "status_konsumsi": status_konsumsi,
+            "batas_timer_ai": rata_rata_baru
         })
-        print(f"[AI TIMER] {user_id} | Kalkulasi Sukses! | Timer Baru: {batas_timer_baru}m | Force Stop: {threshold_mati_paksa_baru}m | Status: {status}")
-    
+        
+        print(f"[AI UPDATE] {user_id} -> Rata-rata baru: {rata_rata_baru} mnt, Batas Maks: {threshold_mati_paksa} mnt. Status: {status_konsumsi}")
+        
     except Exception as e:
-        print(f"[ERROR TIMER] Gagal memproses {user_id}: {e}")
+        print(f"[AI ERROR] Gagal memproses data user {user_id}: {e}")
 
 
 # ==========================================
-# 3. FUNGSI PENDUKUNG: PREDIKSI TARIF MINGGUAN (PZEM)
+# 3. FUNGSI UTAMA: PREDIKSI TAGIHAN MINGGUAN (AI)
 # ==========================================
 def update_weekly_bill_prediction_ai():
-    """
-    Menghitung prediksi tagihan listrik MINGGUAN (Rupiah) sesuai siklus dashboard web.
-    Siklus data direset penuh setiap hari Minggu pukul 23:59 WIB.
-    """
     try:
-        pzem_child = db.child("AquaSync").child("Energy_Usage")
-        data_pzem = pzem_child.get().val()
+        hari_child = db.child("AquaSync").child("Energy_Usage")
+        hari_data = hari_child.get().val()
         
-        if not data_pzem:
+        if not hari_data:
             return
-
-        # Ambil total kWh akumulatif minggu berjalan dari sensor hardware
-        kwh_sekarang = data_pzem.get('Energy', 0)
+            
+        hari_berjalan = hari_data.get("hari_berjalan", 1)
+        kwh_sekarang = hari_data.get("Energy", 0.0)
         
-        # Mengambil data pembanding historis pengeluaran minggu lalu (default Rp 15.000 jika kosong)
-        tarif_historis_minggu_lalu = data_pzem.get('tarif_historis_minggu_rata', 15000)
+        # Mengambil parameter pembanding dari kluster historis alat
+        prediction_child = db.child("AquaSync").child("Prediction")
+        pred_data = prediction_child.get().val() or {}
         
-        # Hari berjalan dalam satu minggu (1 s/d 7)
-        hari_berjalan = data_pzem.get('hari_berjalan', 1)
-        if hari_berjalan < 1: 
-            hari_berjalan = 1
-
-        # 1. Hitung pengeluaran riil aktual saat ini dalam Rupiah
-        rupiah_aktual_saat_ini = kwh_sekarang * TARIF_PER_KWH
-
-        # 2. Proyeksi Linier Kasar: memperkirakan total akhir di hari ke-7 (akhir minggu)
-        proyeksi_kasar_akhir_minggu = (rupiah_aktual_saat_ini / hari_berjalan) * 7
+        tarif_historis_minggu_lalu = pred_data.get("tarif_historis_minggu_rata", 15000)
         
-        # 3. Logika Switching Parameter Alfa Finansial (Threshold Lonjakan 1.5x)
-        if proyeksi_kasar_akhir_minggu > (1.5 * tarif_historis_minggu_lalu):
-            alfa_tarif = 0.8  # Sangat responsif jika terdeteksi pemborosan ekstrem di minggu ini
-        else:
-            alfa_tarif = 0.3  # Stabil mengikuti tren pengeluaran biasanya
-
-        # 4. Rumus Peramalan Adaptive Exponential Smoothing Finansial
-        prediksi_laju_rupiah = (alfa_tarif * proyeksi_kasar_akhir_minggu) + ((1 - alfa_tarif) * tarif_historis_minggu_lalu)
-
-        # 5. SINKRONISASI MUTLAK: Tembak ke path 'AquaSync/Prediction/Monthly_Bill'
-        # Catatan: Variabel di Firebase kamu bernama 'Monthly_Bill', tapi fungsinya menampilkan data MINGGUAN di web.
-        db.child("AquaSync").child("Prediction").update({
-            'Monthly_Bill': round(prediksi_laju_rupiah)
+        # 1. KALKULASI TAGIHAN RIIL SAAT INI (ACTUAL BILL)
+        # Menghitung nominal rupiah riil berjalan berdasarkan akumulasi kwh dari ESP32
+        actual_bill_riil = round(kwh_sekarang * TARIF_PER_KWH)
+        db.child("AquaSync").child("Realtime_Status").update({
+            "Actual_Bill": actual_bill_riil
         })
-        print(f"[AI FINANSIAL] Hari ke-{hari_berjalan} | Aktual: Rp {round(rupiah_aktual_saat_ini)} | Prediksi Akhir Minggu: Rp {round(prediksi_laju_rupiah)}")
-
+        
+        # 2. ALGORITMA PERAMALAN (SHORT-TERM LOAD FORECASTING - STLF)
+        # Proyeksi linier laju pemakaian energi harian menuju hari ke-7
+        proyeksi_laju_rupiah = (actual_bill_riil / hari_berjalan) * 7 if hari_berjalan > 0 else 0
+        
+        # Penghalusan adaptif (ARES) mencegah fluktuasi akibat Join Sesi
+        selisih_proyeksi = abs(proyeksi_laju_rupiah - tarif_historis_minggu_lalu)
+        alpha_stlf = 0.5 if selisih_proyeksi > 10000 else 0.2
+        
+        prediksi_akhir_minggu = (alpha_stlf * proyeksi_laju_rupiah) + ((1 - alpha_stlf) * tarif_historis_minggu_lalu)
+        
+        # Update hasil ramalan finansial ke dashboard (Variabel Monthly_Bill di Firebase)
+        prediction_child.update({
+            "Monthly_Bill": round(prediksi_akhir_minggu)
+        })
+        
+        # 3. SISTEM BACKUP OTOMATIS PADA SIKLUS HARI KE-7
+        if hari_berjalan >= 7:
+            print("\n[BACKUP] Sudah mencapai akhir minggu (Hari ke-7). Menyimpan data ke History...")
+            
+            db.child("AquaSync").child("History_Mingguan").push({
+                "Tanggal_Backup": f"Siklus Hari ke-{hari_berjalan}",
+                "Timestamp": int(time.time() * 1000),
+                "Total_Energy": kwh_sekarang,
+                "Total_Bill": round(prediksi_akhir_minggu)
+            })
+            
+            # AMAN: Hanya mereset siklus hari berjalan AI, membiarkan nilai Energy dikelola alami oleh ESP32
+            hari_child.update({
+                "hari_berjalan": 1
+            })
+            
+            # Perbarui acuan historis mingguan dengan hasil riil minggu ini
+            prediction_child.update({
+                "tarif_historis_minggu_rata": round(prediksi_akhir_minggu)
+            })
+            print("[BACKUP] Siklus di-reset ke Hari 1. Data kelistrikan riil tetap dipertahankan.")
+            
     except Exception as e:
-        print(f"[ERROR FINANSIAL] Gagal memproses data PZEM: {e}")
+        print(f"[STLF ERROR] Gagal memproses peramalan beban listrik: {e}")
 
 
 # ==========================================
-# 4. LOOPING UTAMA DENGAN SISTEM TRIGGER INTERSEPSI
+# 4. LOOP KONTROL UTAMA (ALWAYS-ON SYSTEM)
 # ==========================================
 if __name__ == "__main__":
     while True:
         try:
-            # Baca log aktivitas terakhir untuk mendeteksi apakah ada user yang baru selesai mandi
+            # Mengambil log aktivitas untuk mendeteksi trigger aktivitas pengguna
             log_aktivitas = db.child("AquaSync").child("Log_Aktivitas").get().val()
             
             if log_aktivitas:
@@ -144,19 +162,16 @@ if __name__ == "__main__":
                 if timestamp_mati_saat_ini > last_processed_timestamp:
                     if aktivitas_terakhir == "Mandi & Buang Air":
                         print(f"\n[TRIGGER] Mendeteksi sesi mandi baru dari {user_terakhir}. Memulai kalkulasi AI...")
-                        
-                        # Jalankan pembaruan algoritma hanya untuk user yang baru selesai mandi
                         update_user_timer_ai(user_terakhir)
                         
-                    # Update tracker agar sesi ini tidak dihitung ulang pada loop berikutnya
                     last_processed_timestamp = timestamp_mati_saat_ini
             
-            # FIX: Nama fungsi pemanggil di bawah ini sudah diperbaiki dan disinkronkan secara benar!
+            # Jalankan kalkulasi tagihan berjalan dan peramalan STLF
             update_weekly_bill_prediction_ai()
             
             print("[STATUS] Agen AI stand-by mengawasi antrean aktivitas...")
             print("-" * 50)
-            time.sleep(10) # Jeda pengecekan berkala (10 detik)
+            time.sleep(10)  # Jeda pengecekan berkala (10 detik)
             
         except Exception as e:
             print(f"[SYSTEM CRASH] Mengalami masalah: {e}")

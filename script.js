@@ -265,6 +265,40 @@ onValue(predictionRef, (snapshot) => {
 });
 
 // =================================================================
+// E. 🔥 AMAN & PERSONAL: SUB-STATUS AI MENGIKUTI USER YANG LOGIN
+// =================================================================
+const statusUserAiRef = ref(database, 'AquaSync/Users_AI');
+onValue(statusUserAiRef, (snapshot) => {
+    const usersData = snapshot.val();
+    
+    // Pastikan user sudah terotentikasi dan emailnya valid
+    if (usersData && loggedInUserEmail && loggedInUserEmail !== "-") {
+        const elStatus = document.getElementById('valStatusAI');
+
+        if (elStatus) {
+            // Ambil data status spesifik dari Firebase milik user yang sedang aktif login
+            if (usersData[loggedInUserEmail]) {
+                const statusAktif = usersData[loggedInUserEmail].status_konsumsi || "Optimal";
+                elStatus.innerText = statusAktif;
+
+                // Pewarnaan teks status AI secara otomatis
+                if (statusAktif.includes("Boros")) {
+                    elStatus.style.color = "#ff4757"; // Merah
+                } else if (statusAktif.includes("Efisien")) {
+                    elStatus.style.color = "#36c2b5"; // Hijau
+                } else {
+                    elStatus.style.color = "#36c2b5"; // Hijau untuk Optimal
+                }
+            } else {
+                // Skenario aman jika data user belum terbuat di node Firebase
+                elStatus.innerText = "Belum ada data";
+                elStatus.style.color = "#ff4757";
+            }
+        }
+    }
+});
+
+// =================================================================
 // C. 💡 LOGIKA AMAN: LIST URUT MENURUN (TERBARU SELALU DI ATAS)
 // =================================================================
 onValue(historyRef, (snapshot) => {
