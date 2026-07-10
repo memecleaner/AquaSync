@@ -80,12 +80,12 @@ onValue(realtimeRef, (snapshot) => {
             document.getElementById('valEnergy').innerText = data.Energy ? data.Energy.toFixed(3) + " kWh" : "-- kWh";    
         }
 
-        const currentKwh = data.Energy || 0;
-// =================================================================
-        // AMAN & SINKRON: MENGAMBIL DATA ACTUAL BILL LANGSUNG DARI PYTHON
+        // const currentKwh = data.Energy || 0;
         // =================================================================
-        // 🔥 Ganti hitungRupiahLive lama kamu dengan variabel pembaca data matang dari Python ini:
-        const hitungRupiahLive = data.Actual_Bill || 0;
+        // KEMBALI KE HITUNGAN LOKAL JS (100% BEBAS BEBAN CPU PYTHON)
+        // =================================================================
+        const currentKwh = data.Energy || 0; // Mengambil langsung data kWh dari sensor PZEM
+        const hitungRupiahLive = Math.round(currentKwh * 1444.70); // Dihitung di browser laptop
 
         const actualBillElem = document.getElementById('valActualBill'); 
         if (actualBillElem) {
@@ -96,7 +96,7 @@ onValue(realtimeRef, (snapshot) => {
             }
         }
 
-        // 🔥 Ganti juga bagian statActualBill (statistik ringkasan bawah) di sini agar nilainya kembar konsisten:
+        // Samakan juga statistik mingguan bawah agar angkanya langsung ikut kembar live
         const statBillElem = document.getElementById('statActualBill');
         if (statBillElem) {
             statBillElem.innerText = rupiahFormatter.format(hitungRupiahLive);

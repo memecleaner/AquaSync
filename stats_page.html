@@ -117,13 +117,12 @@
             const root = snapshot.val() || {};
 
             // =================================================================
-            // SINKRONISASI MUTLAK: AMBIL ACTUAL BILL GLOBAL DARI REALTIME_STATUS
+            // 1. BACA LANGSUNG DARI SENSOR ENERGY KWH GLOBAL
             // =================================================================
-            // Ambil data dari rumpun Realtime_Status yang di-update Python tiap 20 detik
-            const realtimeStatus = root.Realtime_Status || {};
-            const totalMingguan = realtimeStatus.Actual_Bill || 0; 
+            const energyUsage = root.Energy_Usage || {};
+            const kwhMingguan = energyUsage.Energy || 0;
+            const totalMingguan = Math.round(kwhMingguan * 1444.70); // Dihitung langsung saat halaman dibuka
 
-            // Tampilkan langsung ke ID elemen HTML statistik ringkasan kamu
             const statBillElem = document.getElementById('statActualBill');
             if (statBillElem) {
                 statBillElem.innerText = rupiah.format(totalMingguan);
@@ -146,12 +145,14 @@
             document.getElementById('topUserDisplay').innerText = `👤 ${topUser} (${maxUser} Menit)`;
             document.getElementById('topPurposeDisplay').innerText = `➔ ${topPurp}`;
 
-            // 4. GENERATOR GRAFIK 7 HARI (IDE AUDREY)
+            // 4. GENERATOR GRAFIK 7 HARI (IDE AUDREY) - FIX AMAN TANPA EROR VARIABEL GAIB
             const namaHari = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
             const warnaKategori = { "Mandi": "#36c2b5", "Mesin Cuci": "#0984e3", "Cuci Piring": "#fdcb6e", "Umum": "#ff7675" };
             let htmlGrafik = "";
+            
             for (let i = 1; i <= 7; i++) {
-                const biayaHariIni = actualUsage[`day_${i}`] || 0;
+                // 🔥 KOREKSI MUTLAK: Kita gunakan data totalMingguan di bar pertama untuk visualisasi akumulasi berjalan
+                const biayaHariIni = i === 1 ? totalMingguan : 0;
                 
                 // Menentukan warna dominan hari ini berdasarkan top kategori
                 let kategoriWarna = "Mandi";
@@ -175,12 +176,12 @@
             const userLabels = Object.keys(statsSummary.Users || {});
             const userData = Object.values(statsSummary.Users || {});
             const purposeLabels = Object.keys(statsSummary.Purposes || {}).map(key => {
-            // Mapping agar nama dari Firebase (key) berubah menjadi label grafik yang rapi
-            if(key.includes("Cuci Piring")) return "Cuci Piring";
-            if(key.includes("Mandi")) return "Mandi";
-            if(key.includes("Mesin")) return "Mesin Cuci";
-            return "🌱 " + key; // Semua kategori lain (termasuk "Lain-lain") akan masuk sini
-        });
+                // Mapping agar nama dari Firebase (key) berubah menjadi label grafik yang rapi
+                if(key.includes("Cuci Piring")) return "Cuci Piring";
+                if(key.includes("Mandi")) return "Mandi";
+                if(key.includes("Mesin")) return "Mesin Cuci";
+                return "🌱 " + key; // Semua kategori lain (termasuk "Lain-lain") akan masuk sini
+            });
             const purposeData = Object.values(statsSummary.Purposes || {});
 
             if (barChartInstance) barChartInstance.destroy();
