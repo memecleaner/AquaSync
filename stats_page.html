@@ -113,16 +113,12 @@
 
         const syncRef = ref(database, 'AquaSync');
         onValue(syncRef, (snapshot) => {
-            // Pengaman tingkat tinggi, jika database kosong, beri nilai default objek {}
             const root = snapshot.val() || {};
 
-            // =================================================================
-            // 1. BACA LANGSUNG DARI SENSOR ENERGY KWH GLOBAL
-            // =================================================================
-            const energyUsage = root.Energy_Usage || {};
-            const kwhMingguan = energyUsage.Energy || 0;
-            const totalMingguan = Math.round(kwhMingguan * 1444.70); // Dihitung langsung saat halaman dibuka
-
+            // 1. TAMPILKAN ACTUAL BILL MINGGU INI DARI REALTIME_STATUS hasil olahan Python
+            const realtimeStatus = root.Realtime_Status || {};
+            const totalMingguan = realtimeStatus.Actual_Bill || 0;
+            
             const statBillElem = document.getElementById('statActualBill');
             if (statBillElem) {
                 statBillElem.innerText = rupiah.format(totalMingguan);
@@ -145,22 +141,22 @@
             document.getElementById('topUserDisplay').innerText = `👤 ${topUser} (${maxUser} Menit)`;
             document.getElementById('topPurposeDisplay').innerText = `➔ ${topPurp}`;
 
-            // 4. GENERATOR GRAFIK 7 HARI (IDE AUDREY) - FIX AMAN TANPA EROR VARIABEL GAIB
+            // 4. GENERATOR GRAFIK TREN HARIAN (day_1 s/d day_7)
             const namaHari = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
             const warnaKategori = { "Mandi": "#36c2b5", "Mesin Cuci": "#0984e3", "Cuci Piring": "#fdcb6e", "Umum": "#ff7675" };
+            const actualUsage = root.actual_usage || {};
             let htmlGrafik = "";
             
             for (let i = 1; i <= 7; i++) {
-                // 🔥 KOREKSI MUTLAK: Kita gunakan data totalMingguan di bar pertama untuk visualisasi akumulasi berjalan
-                const biayaHariIni = i === 1 ? totalMingguan : 0;
+                const biayaHariIni = actualUsage[`day_${i}`] || 0;
                 
-                // Menentukan warna dominan hari ini berdasarkan top kategori
                 let kategoriWarna = "Mandi";
-                if (topPurp.includes("Mesin")) kategoriWarna = "Mesin Cuci";
-                else if (topPurp.includes("Piring")) kategoriWarna = "Cuci Piring";
+                if (topPurp.toLowerCase().includes("mesin")) kategoriWarna = "Mesin Cuci";
+                else if (topPurp.toLowerCase().includes("piring")) kategoriWarna = "Cuci Piring";
+                else if (topPurp.toLowerCase().includes("umum")) kategoriWarna = "Umum";
 
                 const warnaBar = warnaKategori[kategoriWarna] || "#36c2b5";
-                const tinggiBar = Math.min(100, Math.max(5, (biayaHariIni / 20000) * 100)); // Skala grafik
+                const tinggiBar = Math.min(100, Math.max(5, (biayaHariIni / 20000) * 100));
                 
                 htmlGrafik += `
                     <div style="display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; justify-content: flex-end;">
@@ -172,15 +168,16 @@
             }
             document.getElementById('dailyChartContainer').innerHTML = htmlGrafik;
 
-            // 5. RENDER CHART.JS GRAFIK BAWAH
+            // 5. RENDER CHART.JS SINKRON & PEMBERSIHAN STRING KATEGORI
             const userLabels = Object.keys(statsSummary.Users || {});
             const userData = Object.values(statsSummary.Users || {});
+            
             const purposeLabels = Object.keys(statsSummary.Purposes || {}).map(key => {
-                // Mapping agar nama dari Firebase (key) berubah menjadi label grafik yang rapi
-                if(key.includes("Cuci Piring")) return "Cuci Piring";
-                if(key.includes("Mandi")) return "Mandi";
-                if(key.includes("Mesin")) return "Mesin Cuci";
-                return "🌱 " + key; // Semua kategori lain (termasuk "Lain-lain") akan masuk sini
+                const lowerKey = key.toLowerCase();
+                if(lowerKey.includes("piring")) return "Cuci Piring";
+                if(lowerKey.includes("mandi")) return "Mandi";
+                if(lowerKey.includes("mesin") || lowerKey.includes("cuci")) return "Mesin Cuci";
+                return "Keperluan Umum";
             });
             const purposeData = Object.values(statsSummary.Purposes || {});
 
@@ -204,7 +201,7 @@
                     type: 'pie',
                     data: {
                         labels: purposeLabels.length ? purposeLabels : ['Belum ada data'],
-                        datasets: [{ data: purposeData.length ? purposeData : [100], backgroundColor: ['#fdcb6e', '#0984e3', '#00b894', '#6c5ce7', '#b2bec3'] }]
+                        datasets: [{ data: purposeData.length ? purposeData : [100], backgroundColor: ['#fdcb6e', '#0984e3', '#00b894', '#6c5ce7'] }]
                     },
                     options: { responsive: true }
                 });
