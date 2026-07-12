@@ -37,6 +37,17 @@ const rupiahFormatter = new Intl.NumberFormat('id-ID', {
     style: 'currency', currency: 'IDR', maximumFractionDigits: 0
 });
 
+// PROTEKSI: bersihkan string sebelum dipakai sebagai KEY Firebase (bukan value).
+// Firebase RTDB melarang karakter . # $ [ ] pada key, dan '/' akan dibaca sebagai
+// pemisah path (ini penyebab bug lama "Lain-lain" jadi nested object).
+function sanitizeFirebaseKey(raw) {
+    if (!raw) return "Keperluan_Umum";
+    let s = String(raw).trim();
+    s = s.replace(/[./#$\[\]]/g, "-");
+    s = s.replace(/\s+/g, " ").trim();
+    return s || "Keperluan_Umum";
+}
+
 const namaBulanIndo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktobet", "November", "Desember"];
 
 onAuthStateChanged(auth, (user) => {
@@ -416,11 +427,14 @@ window.checkoutUserSession = async function() {
         if (!currentStats.Users) currentStats.Users = {};
         if (!currentStats.Purposes) currentStats.Purposes = {};
 
-        const oldUserMin = currentStats.Users[loggedInUserEmail] || 0;
-        updates[`AquaSync/Stats_Summary/Users/${loggedInUserEmail}`] = oldUserMin + durationMinutes;
+        const userKey = sanitizeFirebaseKey(loggedInUserEmail);
+        const purposeKey = sanitizeFirebaseKey(submitWaterPurpose);
 
-        const oldPurposeMin = currentStats.Purposes[submitWaterPurpose] || 0;
-        updates[`AquaSync/Stats_Summary/Purposes/${submitWaterPurpose}`] = oldPurposeMin + durationMinutes;
+        const oldUserMin = currentStats.Users[userKey] || 0;
+        updates[`AquaSync/Stats_Summary/Users/${userKey}`] = oldUserMin + durationMinutes;
+
+        const oldPurposeMin = currentStats.Purposes[purposeKey] || 0;
+        updates[`AquaSync/Stats_Summary/Purposes/${purposeKey}`] = oldPurposeMin + durationMinutes;
 
         updates["AquaSync/Log_Aktivitas/User_Terakhir"] = loggedInUserEmail;
         updates["AquaSync/Log_Aktivitas/Aktivitas_Terakhir"] = submitWaterPurpose;
@@ -457,7 +471,7 @@ if (usersArray.length > 0) {
             const remStartTime = rawFirebaseSnapshot[`Start_User_${remUser}`];
 
             if (!remStartTime) return;
-            if (remPurpose === 'Lain-lain / Siram Tanaman') {
+            if (remPurpose === 'Lain-lain - Siram Tanaman') {
                 unlimitedUserExists = true;
                 return;
             }
