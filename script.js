@@ -68,9 +68,12 @@ const statsRef = ref(database, 'AquaSync/Stats_Summary');
 // Sensor PZEM tidak bisa direset ke 0 (kWh selalu naik sejak alat menyala).
 // Jadi biaya "minggu ini" dihitung dari selisih kWh sekarang dikurangi baseline
 // yang dicatat Python persis saat minggu baru dimulai (bukan dari kWh mentah).
+// CATATAN: baseline disimpan di AquaSync/System (bukan Energy_Usage) karena
+// ESP32 menulis ulang SELURUH node Energy_Usage tiap update sensor, yang akan
+// menimpa/menghapus field lain (termasuk baseline) kalau ditaruh di situ.
 let baselineKwhCache = 0;
-const energyUsageRef = ref(database, 'AquaSync/Energy_Usage');
-onValue(energyUsageRef, (snapshot) => {
+const systemRef = ref(database, 'AquaSync/System');
+onValue(systemRef, (snapshot) => {
     const d = snapshot.val() || {};
     baselineKwhCache = d.Baseline_Kwh_Minggu_Ini || 0;
 });
