@@ -65,6 +65,16 @@ const predictionRef = ref(database, 'AquaSync/Prediction');
 const historyRef = ref(database, 'AquaSync/History_Mingguan'); 
 const statsRef = ref(database, 'AquaSync/Stats_Summary');
 
+// Sensor PZEM tidak bisa direset ke 0 (kWh selalu naik sejak alat menyala).
+// Jadi biaya "minggu ini" dihitung dari selisih kWh sekarang dikurangi baseline
+// yang dicatat Python persis saat minggu baru dimulai (bukan dari kWh mentah).
+let baselineKwhCache = 0;
+const energyUsageRef = ref(database, 'AquaSync/Energy_Usage');
+onValue(energyUsageRef, (snapshot) => {
+    const d = snapshot.val() || {};
+    baselineKwhCache = d.Baseline_Kwh_Minggu_Ini || 0;
+});
+
 onValue(statsRef, (snapshot) => {
     statsSummaryCache = snapshot.val() || { Users: {}, Purposes: {} };
 });
@@ -95,7 +105,10 @@ onValue(realtimeRef, (snapshot) => {
         // =================================================================
         // KEMBALI KE HITUNGAN LOKAL JS (100% BEBAS BEBAN CPU PYTHON)
         // =================================================================
-        const currentKwh = data.Energy || 0; // Mengambil langsung data kWh dari sensor PZEM
+        // PENTING: sensor PZEM tidak bisa direset ke 0, jadi data.Energy adalah
+        // kWh KUMULATIF sejak alat menyala. Kurangi dengan baseline (kWh saat
+        // minggu ini dimulai, dicatat oleh Python) supaya biaya mingguan benar.
+        const currentKwh = Math.max(0, (data.Energy || 0) - baselineKwhCache);
         const hitungRupiahLive = Math.round(currentKwh * 1444.70); // Dihitung di browser laptop
 
         const actualBillElem = document.getElementById('valActualBill'); 
@@ -229,58 +242,28 @@ onValue(predictionRef, (snapshot) => {
         if (predBulanElem) { predBulanElem.innerText = rupiahFormatter.format(prediksiBulanIni); }
     }
 
+    // CATATAN: Arsip mingguan (push ke History_Mingguan + reset Energy/Actual_Bill)
+    // TIDAK lagi dilakukan di sini. Sekarang dikerjakan oleh Python (main_ai.py) yang
+    // jalan 24/7 di server, supaya tidak tergantung ada/tidaknya browser yang terbuka
+    // tepat jam 23:00 tiap Minggu. Bagian ini hanya menampilkan notifikasi pengingat.
     const sekarang = new Date();
-    const hariIni = sekarang.getDay(); 
-    const jamIni = Harrison = sekarang.getHours();
+    const hariIni = sekarang.getDay();
+    const jamIni = sekarang.getHours();
     const notifElemen = document.getElementById('resetNotification');
 
     if (notifElemen) {
-        if (hariIni === 0) { 
-            if (jamIni >= 18) { 
+        if (hariIni === 0) {
+            if (jamIni >= 18) {
                 notifElemen.style.display = 'block';
                 notifElemen.innerHTML = "⚠️ PEMBERITAHUAN: Pengumpulan data minggu ini selesai malam ini pukul 23:59. E-Statement otomatis terbit!";
-                notifElemen.style.background = "#ff7675"; 
+                notifElemen.style.background = "#ff7675";
             } else {
                 notifElemen.style.display = 'block';
-                notifElemen.innerHTML = "ℹ️ Info: Hari terakhir sikuan mingguan. E-Statement otomatis diproses nanti malam.";
+                notifElemen.innerHTML = "ℹ️ Info: Hari terakhir siklus mingguan. E-Statement otomatis diproses nanti malam.";
                 notifElemen.style.background = "rgba(255,255,255,0.2)";
             }
-
-            if (jamIni === 23) {
-                const currentWeekId = "week_id_" + sekarang.getFullYear() + "_" + Math.floor(sekarang.getTime() / (7 * 24 * 60 * 60 * 1000));
-                if (!localStorage.getItem(currentWeekId)) {
-                    const currentEnergy = rawFirebaseSnapshot.Energy || 0;
-                    const hitungRupiahFinal = Math.round(currentEnergy * 1444.70);
-                    
-                    const seninLalu = new Date(sekarang);
-                    seninLalu.setDate(sekarang.getDate() - 6);
-                    
-                    const namaBulanSenin = namaBulanIndo[seninLalu.getMonth()];
-                    const namaBulanMinggu = namaBulanIndo[sekarang.getMonth()];
-                    
-                    let stringPeriode = `${seninLalu.getDate().toString().padStart(2,'0')} ${namaBulanSenin} - ${sekarang.getDate().toString().padStart(2,'0')} ${namaBulanMinggu}`;
-
-                    const paketArsip = {
-                        Tanggal_Backup: stringPeriode,
-                        Total_Energy: currentEnergy,
-                        Total_Bill: hitungRupiahFinal,
-                        Timestamp: Date.now()
-                    };
-
-                    push(historyRef, paketArsip).then(() => {
-                        const updatesReset = {};
-                        updatesReset['AquaSync/Realtime_Status/Energy'] = 0;
-                        updatesReset['AquaSync/Realtime_Status/Actual_Bill'] = 0;
-                        return update(ref(database), updatesReset);
-                    }).then(() => {
-                        localStorage.setItem(currentWeekId, 'true');
-                    }).catch((err) => {
-                        console.error("Gagal backup otomatis:", err);
-                    });
-                }
-            }
         } else {
-            notifElemen.style.display = 'none'; 
+            notifElemen.style.display = 'none';
         }
     }
 });
