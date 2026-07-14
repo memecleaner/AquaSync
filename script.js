@@ -234,7 +234,7 @@ onValue(realtimeRef, (snapshot) => {
 // =================================================================
 onValue(predictionRef, (snapshot) => {
     const data = snapshot.val();
-    if (data && data.Monthly_Bill) {
+    if (data && data.Monthly_Bill !== undefined && data.Monthly_Bill !== null) {
         const prediksiMingguIni = data.Monthly_Bill;
         const prediksiBulanIni = prediksiMingguIni * 4; 
 
@@ -422,10 +422,20 @@ window.checkoutUserSession = async function() {
         const oldPurposeMin = currentStats.Purposes[purposeKey] || 0;
         updates[`AquaSync/Stats_Summary/Purposes/${purposeKey}`] = oldPurposeMin + durationMinutes;
 
-        updates["AquaSync/Log_Aktivitas/User_Terakhir"] = loggedInUserEmail;
-        updates["AquaSync/Log_Aktivitas/Aktivitas_Terakhir"] = submitWaterPurpose;
-        updates["AquaSync/Log_Aktivitas/Durasi_Asli_Menit"] = durationMinutes;
-        updates["AquaSync/Log_Aktivitas/Timestamp_Mati"] = now;
+        // PENTING: JANGAN tulis ke satu slot tetap (AquaSync/Log_Aktivitas) lagi.
+        // Kalau 2 user checkout berdekatan (bahkan dalam loop JS yang sama), slot
+        // tunggal itu akan langsung ketimpa sebelum Python sempat membacanya --
+        // itulah sebabnya sesi user3/Mesin Cuci hilang dari Daily_Behavior padahal
+        // Stats_Summary-nya benar (karena Stats_Summary ditulis langsung, tidak
+        // lewat relay). Sekarang tiap sesi didorong sebagai entri BARU ke antrian
+        // (AquaSync/Log_Queue), jadi tidak ada yang tertimpa/hilang.
+        const logQueueKey = push(ref(database, 'AquaSync/Log_Queue')).key;
+        updates[`AquaSync/Log_Queue/${logQueueKey}`] = {
+            User_Terakhir: loggedInUserEmail,
+            Aktivitas_Terakhir: submitWaterPurpose,
+            Durasi_Asli_Menit: durationMinutes,
+            Timestamp_Mati: now
+        };
 
         await update(ref(database), updates);
 
