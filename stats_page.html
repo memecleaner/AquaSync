@@ -153,17 +153,26 @@
             const warnaKategori = { "Mandi": "#36c2b5", "Mesin Cuci": "#0984e3", "Cuci Piring": "#fdcb6e", "Umum": "#ff7675" };
             const actualUsage = root.actual_usage || {};
             let htmlGrafik = "";
-            
+
+            // PENTING: skala tinggi bar dibuat ADAPTIF terhadap nilai tertinggi
+            // minggu ini, bukan dibagi angka tetap (20000) yang bikin semua bar
+            // kelihatan pendek kalau biaya mingguan jauh di bawah itu.
+            const semuaBiaya = [];
+            for (let i = 1; i <= 7; i++) semuaBiaya.push(actualUsage[`day_${i}`] || 0);
+            const biayaMax = Math.max(...semuaBiaya, 1); // minimal 1 biar tidak dibagi nol
+
             for (let i = 1; i <= 7; i++) {
-                const biayaHariIni = actualUsage[`day_${i}`] || 0;
-                
+                const biayaHariIni = semuaBiaya[i - 1];
+
                 let kategoriWarna = "Mandi";
                 if (topPurp.toLowerCase().includes("mesin")) kategoriWarna = "Mesin Cuci";
                 else if (topPurp.toLowerCase().includes("piring")) kategoriWarna = "Cuci Piring";
                 else if (topPurp.toLowerCase().includes("umum")) kategoriWarna = "Umum";
 
                 const warnaBar = warnaKategori[kategoriWarna] || "#36c2b5";
-                const tinggiBar = Math.min(100, Math.max(5, (biayaHariIni / 20000) * 100));
+                // Hari tertinggi minggu ini akan selalu mencapai 100%, sisanya
+                // proporsional relatif ke situ -- jadi perbedaan antar hari kelihatan.
+                const tinggiBar = biayaHariIni > 0 ? Math.max(6, (biayaHariIni / biayaMax) * 100) : 3;
                 
                 htmlGrafik += `
                     <div style="display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; justify-content: flex-end;">
