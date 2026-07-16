@@ -53,6 +53,8 @@
             <div class="chart-title">🏆 Top Penggunaan Air Minggu Ini</div>
             <div style="background: #f8f9fa; padding: 12px; border-radius: 12px; font-size: 13px; margin-bottom: 10px; border: 1px solid #eee;">
                 <strong style="color: #ff7675;">User Terboros:</strong> <span id="topUserDisplay">-</span>
+                <br>
+                <strong style="color: #6c5ce7;">Dari total keseluruhan:</strong> <span id="totalUsageDisplay"></span>
             </div>
             <div style="background: #f8f9fa; padding: 12px; border-radius: 12px; font-size: 13px; border: 1px solid #eee;">
                 <strong style="color: #36c2b5;">Kategori Terbanyak:</strong> <span id="topPurposeDisplay">-</span>
@@ -61,7 +63,7 @@
 
         <!-- FITUR 4: GRAFIK BATANG 7 HARI WARNA WARNI IDE AUDREY -->
         <div class="chart-card">
-            <div class="chart-title">📈 Tren Harian & Kategori Dominan (Rp)</div>
+            <div class="chart-title">📈 Tren Harian (Rp)</div>
             <div id="dailyChartContainer" style="display: flex; justify-content: space-around; align-items: flex-end; height: 160px; margin-top: 20px;">
                 <!-- Batang chart akan diisi otomatis -->
             </div>
@@ -145,7 +147,8 @@
             const topPurp = ringkasan.top_kategori;
 
             document.getElementById('topUserDisplay').innerText =
-                `👤 ${topUser} (${maxUser} Menit), dari total keseluruhan pemakaian: ${totalKeseluruhan} Menit`;
+                `👤 ${topUser} (${maxUser} Menit)`;
+            document.getElementById('totalUsageDisplay').innerText = `${totalKeseluruhan} Menit`;
             document.getElementById('topPurposeDisplay').innerText = `➔ ${topPurp}`;
 
             // 4. GENERATOR GRAFIK TREN HARIAN (day_1 s/d day_7)
