@@ -129,16 +129,23 @@
             document.getElementById('statPredictedBill').innerText = rupiah.format(predictedBillVal);
 
             // 3. LOGIKA TOP USER & TOP KATEGORI
-            const statsSummary = root.Stats_Summary || { Users: {}, Purposes: {} };
-            let topUser = "Belum Ada", maxUser = 0;
-            for (let user in statsSummary.Users) {
-                if (statsSummary.Users[user] > maxUser) { maxUser = statsSummary.Users[user]; topUser = user; }
-            }
-            let topPurp = "Belum Ada", maxPurp = 0;
-            for (let p in statsSummary.Purposes) {
-                if (statsSummary.Purposes[p] > maxPurp) { maxPurp = statsSummary.Purposes[p]; topPurp = p; }
-            }
-            document.getElementById('topUserDisplay').innerText = `👤 ${topUser} (${maxUser} Menit)`;
+            // PENTING: sumbernya sekarang System/Ringkasan_Minggu_Ini (dihitung
+            // Python dari Daily_Behavior, sumber yang SAMA dengan perhitungan
+            // Boros/Optimal). Stats_Summary TIDAK dipakai lagi di sini, karena
+            // dia cuma reset pas Senin -- kalau dibaca tengah minggu, angkanya
+            // bisa beda dari status Boros/Optimal yang sedang ditampilkan.
+            const ringkasan = root.System && root.System.Ringkasan_Minggu_Ini
+                ? root.System.Ringkasan_Minggu_Ini
+                : { top_user: "-", top_user_menit: 0, total_keseluruhan_menit: 0, top_kategori: "-" };
+            const statsSummary = root.Stats_Summary || { Users: {}, Purposes: {} };  // dipakai grafik batang/pie di bawah
+
+            const topUser = ringkasan.top_user;
+            const maxUser = ringkasan.top_user_menit;
+            const totalKeseluruhan = ringkasan.total_keseluruhan_menit;
+            const topPurp = ringkasan.top_kategori;
+
+            document.getElementById('topUserDisplay').innerText =
+                `👤 ${topUser} (${maxUser} Menit), dari total keseluruhan pemakaian: ${totalKeseluruhan} Menit`;
             document.getElementById('topPurposeDisplay').innerText = `➔ ${topPurp}`;
 
             // 4. GENERATOR GRAFIK TREN HARIAN (day_1 s/d day_7)
