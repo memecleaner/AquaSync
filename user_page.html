@@ -145,6 +145,73 @@
         // ----------------------------------------------------
         // LOGIKA MEMBACA DATA ARSIP E-STATEMENT ASLI DARI FIREBASE
         // ----------------------------------------------------
+        // Bikin 1 baris CSV yang aman dari koma/tanda kutip di dalam datanya
+        function baris(...cells) {
+            return cells.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',');
+        }
+
+        // PENTING: sebelumnya CSV cuma ambil 3 field (Periode, Total_Rupiah,
+        // Total_kWh) padahal Daily_Behavior & Stats_Summary yang berisi rincian
+        // per-user per-kategori SUDAH tersimpan lengkap di History_Mingguan.
+        // Fungsi ini membongkar semuanya jadi CSV yang lengkap.
+        function buatCsvLengkap(item) {
+            const rows = [];
+            rows.push(baris('Periode', item.Tanggal_Backup || '-'));
+            rows.push(baris('Total Tagihan (Rp)', item.Total_Bill ?? 0));
+            rows.push(baris('Total Energi (kWh)', item.Total_Energy ?? 0));
+            rows.push('');
+
+            const dailyBehavior = item.Daily_Behavior || {};
+            const adaRincianHarian = Object.keys(dailyBehavior).length > 0;
+
+            if (adaRincianHarian) {
+                rows.push(baris('=== RINCIAN HARIAN PER USER PER KATEGORI ==='));
+                rows.push(baris('Hari', 'User', 'Kategori', 'Durasi (Menit)'));
+                Object.keys(dailyBehavior).sort().forEach(hari => {
+                    const users = (dailyBehavior[hari] || {}).Users || {};
+                    Object.keys(users).forEach(user => {
+                        const purposes = (users[user] || {}).Purposes || {};
+                        Object.keys(purposes).forEach(kategori => {
+                            const menit = purposes[kategori];
+                            if (typeof menit === 'number') rows.push(baris(hari, user, kategori, menit));
+                        });
+                    });
+                });
+                rows.push('');
+            }
+
+            const statsSummary = item.Stats_Summary || {};
+            const usersSS = statsSummary.Users || {};
+            if (Object.keys(usersSS).length > 0) {
+                rows.push(baris('=== REKAP PER USER (TOTAL MINGGU INI) ==='));
+                rows.push(baris('User', 'Total Menit'));
+                Object.keys(usersSS).forEach(user => rows.push(baris(user, usersSS[user])));
+                rows.push('');
+            }
+
+            const purposesSS = statsSummary.Purposes || {};
+            const purposesValid = Object.entries(purposesSS).filter(([k, v]) => typeof v === 'number' && k !== '-');
+            if (purposesValid.length > 0) {
+                rows.push(baris('=== REKAP PER KATEGORI (TOTAL MINGGU INI) ==='));
+                rows.push(baris('Kategori', 'Total Menit'));
+                purposesValid.forEach(([k, v]) => rows.push(baris(k, v)));
+                rows.push('');
+            }
+
+            const actualUsage = item.actual_usage || {};
+            if (Object.keys(actualUsage).length > 0) {
+                rows.push(baris('=== BIAYA HARIAN (Rp) ==='));
+                rows.push(baris('Hari', 'Biaya'));
+                Object.keys(actualUsage).sort().forEach(hari => rows.push(baris(hari, actualUsage[hari])));
+            }
+
+            if (!adaRincianHarian) {
+                rows.push(baris('Catatan: arsip minggu ini belum punya rincian detail (arsip lama sebelum fitur ditambahkan).'));
+            }
+
+            return rows.join('\n');
+        }
+
         const historyRef = ref(database, 'AquaSync/History_Mingguan');
         onValue(historyRef, (snapshot) => {
             const data = snapshot.val();
@@ -159,16 +226,19 @@
 
                 let htmlContent = "";
                 listArr.forEach(item => {
-                    // Membuat CSV Dinamis dari data asli
-                    const csvContent = `data:text/csv;charset=utf-8,Periode,Total_Rupiah,Total_kWh\n${item.Tanggal_Backup},${item.Total_Bill},${item.Total_Energy}`;
-                    
+                    // Bikin CSV lengkap (bukan cuma 3 kolom) pakai Blob, lebih aman
+                    // untuk konten panjang dibanding data-URI lama.
+                    const csvString = buatCsvLengkap(item);
+                    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+                    const blobUrl = URL.createObjectURL(blob);
+
                     htmlContent += `
                         <div class="statement-card">
                             <div class="statement-info">
                                 <div class="statement-date">📅 Periode ${item.Tanggal_Backup || '-'}</div>
                                 <div class="statement-status">Status: Ready | ${item.Total_Energy ? item.Total_Energy.toFixed(3) : 0} kWh</div>
                             </div>
-                            <a href="${encodeURI(csvContent)}" download="AquaSync_${item.Tanggal_Backup}.csv" class="download-btn">DOWNLOAD</a>
+                            <a href="${blobUrl}" download="AquaSync_${item.Tanggal_Backup}.csv" class="download-btn">DOWNLOAD</a>
                         </div>
                     `;
                 });
