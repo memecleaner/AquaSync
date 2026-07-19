@@ -191,14 +191,23 @@
             const userLabels = Object.keys(statsSummary.Users || {});
             const userData = Object.values(statsSummary.Users || {});
             
-            const purposeLabels = Object.keys(statsSummary.Purposes || {}).map(key => {
+            // PENTING: sebelumnya 3 hal beda ke-mapping jadi label sama "Keperluan
+            // Umum": (1) key junk "-" bernilai 0, (2) data lama "Lain-lain " yang
+            // nested/rusak (bug lama, isinya object bukan angka), dan (3) "Lain-
+            // lain - Siram Tanaman" yang tidak match kondisi apapun jadi jatuh ke
+            // fallback generik. Sekarang di-filter dulu & dikasih label yang benar.
+            const kategoriEntries = Object.entries(statsSummary.Purposes || {})
+                .filter(([key, val]) => typeof val === 'number' && key !== '-' && val > 0);
+
+            const purposeLabels = kategoriEntries.map(([key]) => {
                 const lowerKey = key.toLowerCase();
-                if(lowerKey.includes("piring")) return "Cuci Piring";
-                if(lowerKey.includes("mandi")) return "Mandi";
-                if(lowerKey.includes("mesin") || lowerKey.includes("cuci")) return "Mesin Cuci";
+                if (lowerKey.includes("piring")) return "Cuci Piring";
+                if (lowerKey.includes("mandi")) return "Mandi";
+                if (lowerKey.includes("mesin")) return "Mesin Cuci";
+                if (lowerKey.includes("siram") || lowerKey.includes("tanaman") || lowerKey.includes("lain")) return "Lain-lain";
                 return "Keperluan Umum";
             });
-            const purposeData = Object.values(statsSummary.Purposes || {});
+            const purposeData = kategoriEntries.map(([, val]) => val);
 
             if (barChartInstance) barChartInstance.destroy();
             const ctxBar = document.getElementById('userMinutesChart');
